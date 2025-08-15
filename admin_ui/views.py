@@ -1143,3 +1143,122 @@ def course_attendance(request, assigned_id):
         'network_status': network_status,
         'today': today
     })
+
+
+@csrf_exempt
+def api_mark_attendance(request):
+    """ESP32 marks attendance for a student with enrollment validation"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            matric_number = data.get('matric_number')
+            course_code = data.get('course_code')
+            course_name = data.get('course_name')
+            session_id = data.get('session_id')
+            device_id = data.get('device_id')
+            timestamp = data.get('timestamp')
+            
+            # Validate required fields
+            if not matric_number or not course_code:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Matric number and course code are required'
+                }, status=400)
+            
+            # Find the student
+            try:
+                student = Student.objects.get(matric_no=matric_number)
+            except Student.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Student with matric number {matric_number} not found'
+                }, status=404)
+            
+            # Find the course
+            try:
+                course = Course.objects.get(code=course_code)
+            except Course.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Course {course_code} not found'
+                }, status=404)
+            
+            # Check if student is enrolled in this course
+            try:
+                enrollment = CourseEnrollment.objects.get(
+                    student=student,
+                    course=course
+                )
+            except CourseEnrollment.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Student {matric_number} is not enrolled in course {course_code}'
+                }, status=403)
+            
+            # Find or create attendance session for today
+            today = timezone.now().date()
+            attendance_session, created = AttendanceSession.objects.get_or_create(
+                course=course,
+                date=today,
+                defaults={
+                    'lecturer': enrollment.lecturer if hasattr(enrollment, 'lecturer') else None,
+                    'session': enrollment.session if hasattr(enrollment, 'session') else None,
+                    'semester': enrollment.semester if hasattr(enrollment, 'semester') else None
+                }
+            )
+            
+            # Check if attendance already exists for this student today
+            existing_attendance = AttendanceRecord.objects.filter(
+                attendance_session=attendance_session,
+                student=student
+            ).first()
+            
+            if existing_attendance:
+                # Update existing attendance
+                existing_attendance.status = 'present'
+                existing_attendance.network_verified = True
+                existing_attendance.esp32_device = device_id
+                existing_attendance.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Attendance updated for {student.name} in {course.code}',
+                    'student_name': student.name,
+                    'course_code': course.code,
+                    'status': 'present',
+                    'network_verified': True
+                })
+            else:
+                # Create new attendance record
+                AttendanceRecord.objects.create(
+                    attendance_session=attendance_session,
+                    student=student,
+                    status='present',
+                    network_verified=True,
+                    esp32_device=device_id
+                )
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Attendance recorded for {student.name} in {course.code}',
+                    'student_name': student.name,
+                    'course_code': course.code,
+                    'status': 'present',
+                    'network_verified': True
+                })
+                
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'message': 'Invalid JSON data'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': f'Error recording attendance: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'message': 'Method not allowed'
+    }, status=405)

@@ -39,6 +39,7 @@ from .views import (
     api_device_connected,
     api_device_disconnected,
     api_active_course,
+    api_mark_attendance,
 
     # 📋 View Assignments
     view_assignments,
@@ -88,6 +89,7 @@ urlpatterns = [
     path('api/esp32/connected/', api_device_connected, name='api_device_connected'),
     path('api/esp32/disconnected/', api_device_disconnected, name='api_device_disconnected'),
     path('api/esp32/active-course/', api_active_course, name='api_active_course'),
+    path('api/esp32/mark-attendance/', api_mark_attendance, name='api_mark_attendance'),
 
     # 📋 View Assignments
     path('view-assignments/', view_assignments, name='view_assignments'),
