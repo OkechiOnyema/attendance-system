@@ -76,12 +76,24 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Check if we're on Render (production)
-if os.environ.get('DATABASE_URL'):
+# Database configuration with fallback
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+# Force SQLite if no DATABASE_URL or if it's not a valid PostgreSQL URL
+if not DATABASE_URL or 'postgresql' not in DATABASE_URL:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+    print("✅ Using SQLite database (no PostgreSQL URL or invalid format)")
+else:
+    # Try PostgreSQL only if we have a valid URL
     try:
         import dj_database_url
         DATABASES = {
-            'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
+            'default': dj_database_url.parse(DATABASE_URL)
         }
         print("✅ Using PostgreSQL database from DATABASE_URL")
     except Exception as e:
@@ -93,15 +105,6 @@ if os.environ.get('DATABASE_URL'):
                 'NAME': BASE_DIR / 'db.sqlite3',
             }
         }
-else:
-    # Local development database
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
-    print("✅ Using local SQLite database")
 
 
 # Password validation
