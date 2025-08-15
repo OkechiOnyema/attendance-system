@@ -7,10 +7,11 @@ services:
       python --version
       pip install --upgrade pip
       pip install -r requirements.txt
-      python manage.py migrate --noinput
       python manage.py collectstatic --noinput
+    startCommand: |
+      python manage.py migrate --noinput
       python manage.py shell -c "from django.contrib.auth.models import User; User.objects.create_superuser('admin', 'admin@example.com', 'admin123') if not User.objects.filter(username='admin').exists() else None"
-    startCommand: gunicorn config.wsgi:application
+      gunicorn config.wsgi:application
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
