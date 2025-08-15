@@ -106,6 +106,29 @@ else:
             }
         }
 
+# Auto-create database tables if they don't exist
+import os
+if os.environ.get('AUTO_CREATE_DB', 'True') == 'True':
+    print("🔧 Auto-creating database tables...")
+    try:
+        from django.core.management import execute_from_command_line
+        import sys
+        # Run migrations silently
+        execute_from_command_line(['manage.py', 'migrate', '--noinput'])
+        print("✅ Database tables created successfully!")
+        
+        # Create superuser if none exists
+        from django.contrib.auth.models import User
+        if not User.objects.exists():
+            User.objects.create_superuser('admin', 'admin@example.com', 'admin123')
+            print("✅ Superuser 'admin' created with password 'admin123'")
+        else:
+            print("ℹ️ Superuser already exists")
+            
+    except Exception as e:
+        print(f"⚠️ Auto-creation failed: {e}")
+        print("📝 You may need to run migrations manually")
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
