@@ -78,11 +78,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Check if we're on Render (production)
 if os.environ.get('DATABASE_URL'):
-    import dj_database_url
-    DATABASES = {
-        'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
-    }
-    print("✅ Using PostgreSQL database from DATABASE_URL")
+    try:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
+        }
+        print("✅ Using PostgreSQL database from DATABASE_URL")
+    except Exception as e:
+        print(f"❌ Error with PostgreSQL: {e}")
+        print("⚠️ Falling back to SQLite")
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 else:
     # Local development database
     DATABASES = {
