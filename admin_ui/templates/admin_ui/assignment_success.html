@@ -1,0 +1,19 @@
+<h2>✅ Courses Successfully Assigned</h2>
+<table>
+  <tr>
+    <th>Lecturer</th>
+    <th>Course Code</th>
+    <th>Course Title</th>
+    <th>Session</th>
+    <th>Semester</th>
+  </tr>
+  {% for course in assignments %}
+  <tr>
+    <td>{{ course.lecturer.username }}</td>
+    <td>{{ course.course.code }}</td>
+    <td>{{ course.course.title }}</td>
+    <td>{{ course.session }}</td>
+    <td>{{ course.semester }}</td>
+  </tr>
+  {% endfor %}
+</table>

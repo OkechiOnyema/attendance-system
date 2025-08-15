@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>👀 Preview Students</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+
+    <h2 class="text-center mb-4">👀 Preview Uploaded Students</h2>
+
+    {% if students %}
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Matric Number</th>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Level</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+            <tr>
+                <td>{{ student.matric_number }}</td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.department|default:"-" }}</td>
+                <td>{{ student.level|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No students found in the uploaded file.</p>
+    {% endif %}
+
+    <a href="{% url 'upload_student_csv' %}" class="btn btn-secondary mt-3">⬅️ Back to Upload</a>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance Marked</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .box {
+            background-color: white;
+            padding: 40px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 0 8px rgba(0,0,0,0.15);
+        }
+        h2 {
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+        a {
+            text-decoration: none;
+            color: #0055cc;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>✅ Attendance Recorded</h2>
+        <p>{{ student.name }} ({{ student.matric_number }}) marked present.</p>
+        <a href="{% url 'dashboard' %}">← Back to Dashboard</a>
+    </div>
+</body>
+</html>

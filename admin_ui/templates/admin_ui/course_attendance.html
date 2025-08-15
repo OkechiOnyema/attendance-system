@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>📋 Attendance for {{ assigned_course.course.title }} ({{ assigned_course.course.code }})</h2>
+<p><strong>Session:</strong> {{ assigned_course.session }} | <strong>Semester:</strong> {{ assigned_course.semester }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="mb-3">
+        <label for="date">Attendance Date:</label>
+        <input type="date" name="date" id="date" class="form-control" required>
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Matric No</th>
+                <th>Name</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in enrolled_students %}
+            <tr>
+                <td>{{ student.matric_no }}</td>
+                <td>{{ student.name }}</td>
+                <td>
+                    <select name="status_{{ student.matric_no }}" class="form-select">
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                    </select>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <button type="submit" class="btn btn-success">✅ Submit Attendance</button>
+</form>
+{% endblock %}

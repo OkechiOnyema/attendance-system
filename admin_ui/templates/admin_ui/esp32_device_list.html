@@ -1,0 +1,154 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}ESP32 Devices - Attendance System{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- 🚪 Navigation Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-primary">
+                    <i class="fas fa-arrow-left"></i> Back to Lecturer Dashboard
+                </a>
+                <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-warning">
+                    <i class="fas fa-network-wired"></i> Network Sessions
+                </a>
+                <a href="{% url 'admin_ui:view_assignments' %}" class="btn btn-success">
+                    <i class="fas fa-list"></i> View Assignments
+                </a>
+                <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>🛰️ ESP32 Devices</h2>
+                <a href="{% url 'admin_ui:esp32_device_create' %}" class="btn btn-success">
+                    <i class="fas fa-plus"></i> Add New Device
+                </a>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            {% if devices %}
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Registered ESP32 Devices</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Device ID</th>
+                                        <th>Device Name</th>
+                                        <th>WiFi SSID</th>
+                                        <th>Location</th>
+                                        <th>Status</th>
+                                        <th>Last Seen</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for device in devices %}
+                                    <tr>
+                                        <td><code>{{ device.device_id }}</code></td>
+                                        <td>{{ device.device_name }}</td>
+                                        <td><strong>{{ device.ssid }}</strong></td>
+                                        <td>{{ device.location }}</td>
+                                        <td>
+                                            {% if device.is_active %}
+                                                <span class="badge bg-success">Active</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Inactive</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if device.last_seen %}
+                                                <small>{{ device.last_seen|date:"M d, Y H:i" }}</small>
+                                            {% else %}
+                                                <span class="text-muted">Never</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <a href="{% url 'admin_ui:esp32_device_edit' device.device_id %}" 
+                                                   class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-edit"></i> Edit
+                                                </a>
+                                                <a href="{% url 'admin_ui:esp32_device_delete' device.device_id %}" 
+                                                   class="btn btn-sm btn-outline-danger"
+                                                   onclick="return confirm('Are you sure you want to delete this device?')">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    <h5>No ESP32 devices registered yet.</h5>
+                    <p>Start by adding your first ESP32 device that will create the WiFi hotspot for attendance verification.</p>
+                    <a href="{% url 'admin_ui:esp32_device_create' %}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add First Device
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>📋 How It Works</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <i class="fas fa-wifi fa-3x text-primary mb-3"></i>
+                                <h6>1. WiFi Hotspot</h6>
+                                <p class="small">ESP32 creates a WiFi network that students must connect to</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <i class="fas fa-mobile-alt fa-3x text-success mb-3"></i>
+                                <h6>2. Device Connection</h6>
+                                <p class="small">Students connect their devices to the ESP32 network</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <i class="fas fa-check-circle fa-3x text-info mb-3"></i>
+                                <h6>3. Attendance Verification</h6>
+                                <p class="small">System verifies network connection before marking attendance</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

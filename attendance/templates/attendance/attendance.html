@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance Management</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            background-color: #0055cc;
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 0 0 8px 8px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 22px;
+        }
+        .header a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            background-color: #003f99;
+            padding: 8px 14px;
+            border-radius: 6px;
+        }
+        .container {
+            max-width: 960px;
+            margin: 40px auto;
+            padding: 30px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        iframe {
+            display: block;
+            margin: 0 auto 30px auto;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 25px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        th {
+            background-color: #0055cc;
+            color: white;
+        }
+        a.button {
+            background-color: #28a745;
+            color: white;
+            padding: 7px 14px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        a.button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+
+
+    {% if messages %}
+    <div style="margin: 20px auto; max-width: 960px;">
+        {% for message in messages %}
+            <div style="
+                background-color: #dff0d8;
+                border-left: 6px solid #3c763d;
+                padding: 10px 20px;
+                margin-bottom: 10px;
+                border-radius: 5px;
+                color: #3c763d;
+                font-weight: bold;">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+    <div class="header">
+        <h1>🧑‍🏫 Fingerprint Attendance – Lecturer Dashboard</h1>
+        <form method="POST" action="{% url 'logout' %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" style="
+                background-color: #003f99;
+                color: white;
+                border: none;
+                padding: 8px 14px;
+                border-radius: 6px;
+                font-weight: bold;
+                cursor: pointer;
+            ">Logout</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <iframe src="http://192.168.4.1" width="640" height="480"></iframe>
+
+        <h2>Student List – Mark Attendance</h2>
+        <table>
+            <tr>
+                <th>Name</th>
+                <th>Matric Number</th>
+                <th>Action</th>
+            </tr>
+            {% for student in students %}
+            <tr>
+                <td>{{ student.name }}</td>
+                <td>{{ student.matric_number }}</td>
+                <td>
+                    <a class="button" href="{% url 'mark_attendance' student.id %}">✅ Mark Present</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+</body>
+</html>

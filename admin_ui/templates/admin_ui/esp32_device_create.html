@@ -1,0 +1,133 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}Create ESP32 Device - Attendance System{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">🛰️ Create New ESP32 Device</h3>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="device_id" class="form-label">Device ID *</label>
+                                    <input type="text" class="form-control" id="device_id" name="device_id" 
+                                           required placeholder="e.g., ESP32_CS101_001">
+                                    <div class="form-text">Unique identifier for this ESP32 device</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="device_name" class="form-label">Device Name *</label>
+                                    <input type="text" class="form-control" id="device_name" name="device_name" 
+                                           required placeholder="e.g., CS101 Classroom ESP32">
+                                    <div class="form-text">Human-readable name for the device</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="ssid" class="form-label">WiFi SSID *</label>
+                                    <input type="text" class="form-control" id="ssid" name="ssid" 
+                                           required placeholder="e.g., Attendance_CS101">
+                                    <div class="form-text">Network name that ESP32 will create</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="password" class="form-label">WiFi Password</label>
+                                    <input type="text" class="form-control" id="password" name="password" 
+                                           placeholder="e.g., cs1012024 (optional)">
+                                    <div class="form-text">Password for the WiFi network (optional)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="location" class="form-label">Location *</label>
+                            <input type="text" class="form-control" id="location" name="location" 
+                                   required placeholder="e.g., Computer Science Lab 1, Building A">
+                            <div class="form-text">Physical location where this device will be placed</div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-secondary me-md-2">
+                                <i class="fas fa-arrow-left"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Create Device
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ESP32 Setup Instructions -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📋 ESP32 Setup Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h6>After creating this device, you'll need to:</h6>
+                        <ol class="mb-0">
+                            <li>Upload the ESP32 code to your ESP32 CAM module</li>
+                            <li>Configure the device with the SSID and password you specified</li>
+                            <li>Place the device in the specified location</li>
+                            <li>Power on the device to start the WiFi hotspot</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Required ESP32 Code Features:</h6>
+                            <ul class="small">
+                                <li>WiFi Access Point mode</li>
+                                <li>HTTP server for device communication</li>
+                                <li>Device connection/disconnection tracking</li>
+                                <li>Heartbeat functionality</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>API Endpoints:</h6>
+                            <ul class="small">
+                                <li><code>/api/esp32/heartbeat/</code> - Device status</li>
+                                <li><code>/api/esp32/connected/</code> - Device connects</li>
+                                <li><code>/api/esp32/disconnected/</code> - Device disconnects</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 🚪 Navigation Buttons -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-center gap-2 flex-wrap">
+                        <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Back to ESP32 Devices
+                        </a>
+                        <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-warning">
+                            <i class="fas fa-network-wired"></i> Network Sessions
+                        </a>
+                        <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-success">
+                            <i class="fas fa-home"></i> Lecturer Dashboard
+                        </a>
+                        <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,5 @@
+# ESP32 Integration Test Dependencies
+# Install with: pip install -r requirements_esp32.txt
+
+requests>=2.25.1
+urllib3>=1.26.0

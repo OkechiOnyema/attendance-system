@@ -1,0 +1,58 @@
+Required Arduino Libraries for ESP32 Attendance System
+====================================================
+
+1. ESP32 Board Package (Core)
+   - Name: ESP32 by Espressif Systems
+   - Install via: Tools → Board → Boards Manager
+   - Search: "ESP32"
+
+2. ArduinoJson
+   - Name: ArduinoJson by Benoit Blanchon
+   - Install via: Tools → Manage Libraries
+   - Search: "ArduinoJson"
+   - Version: 6.x or later
+
+3. WiFi (Built-in with ESP32)
+   - Already included, no installation needed
+
+4. HTTPClient (Built-in with ESP32)
+   - Already included, no installation needed
+
+5. DNSServer (Built-in with ESP32)
+   - Already included, no installation needed
+
+Installation Steps:
+==================
+
+1. Open Arduino IDE
+2. Go to Tools → Manage Libraries...
+3. Search for "ArduinoJson"
+4. Click "Install" on the latest version
+5. Wait for installation to complete
+6. Restart Arduino IDE if needed
+
+Alternative Installation:
+========================
+
+If Library Manager fails:
+1. Go to https://github.com/bblanchon/ArduinoJson/releases
+2. Download latest .zip file
+3. In Arduino IDE: Sketch → Include Library → Add .ZIP Library...
+4. Select the downloaded .zip file
+
+Verification:
+============
+
+After installation:
+1. Go to Sketch → Include Library
+2. You should see "ArduinoJson" in the list
+3. Try compiling the code again
+4. No more "ArduinoJson.h: No such file or directory" errors
+
+Common Issues:
+==============
+
+1. Library not found: Make sure to restart Arduino IDE after installation
+2. Version conflicts: Use the latest stable version
+3. ESP32 board not selected: Make sure ESP32 Dev Module is selected in Tools → Board
+4. Wrong port: Select the correct COM port for your ESP32

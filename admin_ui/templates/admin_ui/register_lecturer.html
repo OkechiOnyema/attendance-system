@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register Lecturer & Assign Roles</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+
+<div class="container py-5">
+    <h2 class="text-center mb-4">🎓 Lecturer Management Panel</h2>
+
+    <!-- 🚪 Navigation Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'admin_ui:view_assignments' %}" class="btn btn-success">
+                    <i class="fas fa-list"></i> View Assignments
+                </a>
+                <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Django messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="row">
+        <!-- Register Lecturer -->
+        <div class="col-md-6">
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-primary text-white">✍🏽 Register New Lecturer</div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="register_lecturer" value="true">
+
+                        <div class="mb-3">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" name="full_name" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Email Address</label>
+                            <input type="email" name="email" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Department</label>
+                            <select name="department" class="form-select" required>
+                                <option value="">Select Department</option>
+                                <option value="Computer Science">Computer Science</option>
+                                <option value="Electrical Engineering">Electrical Engineering</option>
+                                <option value="Mathematics">Mathematics</option>
+                                <option value="Physics">Physics</option>
+                                <option value="Statistics">Statistics</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" name="password" class="form-control" autocomplete="new-password" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Confirm Password</label>
+                            <input type="password" name="confirm_password" class="form-control" autocomplete="new-password" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Register Lecturer</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assign Courses -->
+        <div class="col-md-6">
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-success text-white">📚 Assign Courses to Lecturer</div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="assign_course" value="true">
+
+                        <div class="mb-3">
+                            <label class="form-label">Select Lecturer</label>
+                            <select name="selected_lecturer" class="form-select" required>
+                                {% for lecturer in lecturers %}
+                                    <option value="{{ lecturer.id }}">{{ lecturer.username }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Session</label>
+                            <select name="session" class="form-select" required>
+                                <option value="">Select Session</option>
+                                <option value="2024/2025">2024/2025</option>
+                                <option value="2025/2026">2025/2026</option>
+                                <option value="2026/2027">2026/2027</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Semester</label>
+                            <select name="semester" class="form-select" required>
+                                <option value="">Select Semester</option>
+                                <option value="1st Semester">1st Semester</option>
+                                <option value="2nd Semester">2nd Semester</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Select Courses</label>
+                            {% for course in courses %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="selected_courses" value="{{ course.code }}" id="course{{ forloop.counter }}">
+                                    <label class="form-check-label" for="course{{ forloop.counter }}">
+                                        {{ course.code }} – {{ course.title }}
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100">Assign Selected Courses</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assign Registration Officer -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-warning text-dark">🛂 Assign Registration Officer</div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="assign_registration_officer" value="true">
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Select Lecturer</label>
+                        <select name="lecturer_id" class="form-select" required>
+                            {% for lecturer in lecturers %}
+                                <option value="{{ lecturer.id }}">{{ lecturer.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Session</label>
+                        <select name="session" class="form-select" required>
+                            <option value="">Select Session</option>
+                            <option value="2024/2025">2024/2025</option>
+                            <option value="2025/2026">2025/2026</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Semester</label>
+                        <select name="semester" class="form-select" required>
+                            <option value="">Select Semester</option>
+                            <option value="1st Semester">1st Semester</option>
+                            <option value="2nd Semester">2nd Semester</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Level</label>
+                        <select name="level" class="form-select" required>
+                            <option value="">Select Level</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="300">300</option>
+                            <option value="400">400</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">Department</label>
+                        <select name="department" class="form-select" required>
+                            <option value="">Select Department</option>
+                            <option value="Computer Science">Computer Science</option>
+                            <option value="Electrical Engineering">Electrical Engineering</option>
+                            <option value="Mathematics">Mathematics</option>
+                            <option value="Physics">Physics</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-warning w-100">Assign Registration Officer</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Display Assigned Officers -->
+    {% if assigned_officers %}
+        <h4 class="mt-4">📋 Assigned Registration Officers</h4>
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Lecturer</th>
+                    <th>Session</th>
+                    <th>Semester</th>
+                    <th>Level</th>
+                    <th>Department</th>
+                    <th>Assigned On</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for officer in assigned_officers %}
+                    <tr>
+                        <td>{{ officer.lecturer.username }}</td>
+                        <td>{{ officer.session }}</td>
+                        <td>{{ officer.semester }}</td>
+                        <td>{{ officer.level }}</td>
+                        <td>{{ officer.department }}</td>
+                        <td>{{ officer.assigned_at|date:"M d, Y H:i" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="alert alert-info">No registration officers assigned yet.</div>
+    {% endif %}
+
+    <!-- 🚪 Logout Button -->
+    <div class="text-center mt-4">
+        <a href="{% url 'admin_ui:logout' %}" class="btn btn-outline-danger">
+            <i class="bi bi-box-arrow-right"></i> Logout
+        </a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

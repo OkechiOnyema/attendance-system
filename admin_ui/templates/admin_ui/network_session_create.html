@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Network Session</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+
+<div class="container py-5">
+    <h2 class="text-center mb-4">🌐 Create Network Attendance Session</h2>
+
+    <!-- 🚪 Navigation Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-primary">
+                    <i class="fas fa-arrow-left"></i> Back to Network Sessions
+                </a>
+                <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-info">
+                    <i class="fas fa-wifi"></i> ESP32 Devices
+                </a>
+                <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-success">
+                    <i class="fas fa-home"></i> Lecturer Dashboard
+                </a>
+                <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Django messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">📝 New Network Session Details</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <!-- Course Selection -->
+                        <div class="mb-3">
+                            <label class="form-label">📚 Select Course</label>
+                            
+                            {% if assigned_courses %}
+                                <select name="course" class="form-select" id="courseSelect" required>
+                                    <option value="">Choose a course...</option>
+                                    {% for assignment in assigned_courses %}
+                                    <option value="{{ assignment.course.id }}" 
+                                            data-session="{{ assignment.session }}" 
+                                            data-semester="{{ assignment.semester }}">
+                                        {{ assignment.course.code }} - {{ assignment.course.title }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Select a course that has been assigned to you.</div>
+                            {% else %}
+                                <div class="alert alert-warning">
+                                    <strong>⚠️ No courses assigned!</strong>
+                                    <br>
+                                    You don't have any courses assigned to you yet. Please contact the administrator to assign courses.
+                                    <br><br>
+                                    <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Duration -->
+                        <div class="mb-3">
+                            <label class="form-label">⏱️ Duration (minutes)</label>
+                            <input type="number" name="duration" class="form-control" placeholder="90" min="15" max="300" required>
+                            <div class="form-text">Session duration in minutes (15-300 minutes)</div>
+                        </div>
+
+                        <!-- ESP32 Device Selection -->
+                        <div class="mb-3">
+                            <label class="form-label">🛰️ Select ESP32 Device</label>
+                            <select name="esp32_device" class="form-select" required>
+                                <option value="">Choose an ESP32 device...</option>
+                                {% for device in esp32_devices %}
+                                <option value="{{ device.id }}">
+                                    {{ device.device_name }} - {{ device.ssid }}
+                                    ({{ device.location }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Select the ESP32 device that will create the WiFi network.</div>
+                        </div>
+
+                        <!-- Session Details -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">📅 Session</label>
+                                    <input type="text" name="session" id="sessionField" class="form-control" readonly>
+                                    <div class="form-text">Academic session (auto-filled from course assignment)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">🏫 Semester</label>
+                                    <input type="text" name="semester" id="semesterField" class="form-control" readonly>
+                                    <div class="form-text">Semester (auto-filled from course assignment)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-wifi"></i> Create Network Session
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 📖 Instructions -->
+            <div class="card mt-4 shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">📖 Setup Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>🛰️ ESP32 Setup:</h6>
+                            <ol>
+                                <li>Upload the Arduino code to your ESP32</li>
+                                <li>Power on the ESP32 device</li>
+                                <li>It will create a WiFi hotspot</li>
+                                <li>Students connect to the hotspot</li>
+                                <li>Attendance is automatically recorded</li>
+                            </ol>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>📱 Student Process:</h6>
+                            <ol>
+                                <li>Students connect to ESP32 WiFi</li>
+                                <li>Their device MAC address is logged</li>
+                                <li>Attendance is marked automatically</li>
+                                <li>No manual input required</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for auto-filling session and semester -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const courseSelect = document.getElementById('courseSelect');
+    const sessionField = document.getElementById('sessionField');
+    const semesterField = document.getElementById('semesterField');
+    
+    if (courseSelect && sessionField && semesterField) {
+        courseSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.value) {
+                // Get session and semester from data attributes
+                const session = selectedOption.getAttribute('data-session');
+                const semester = selectedOption.getAttribute('data-semester');
+                
+                // Populate the fields
+                sessionField.value = session || '';
+                semesterField.value = semester || '';
+            } else {
+                // Clear fields if no course is selected
+                sessionField.value = '';
+                semesterField.value = '';
+            }
+        });
+    }
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://kit.fontawesome.com/your-fontawesome-kit.js"></script>
+</body>
+</html>

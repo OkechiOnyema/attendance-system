@@ -1,0 +1,184 @@
+{% extends 'admin_ui/base.html' %}
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center mb-4">👨‍🏫 Lecturer Dashboard</h2>
+            
+            <!-- 📝 Information Note -->
+            <div class="alert alert-info text-center mb-4">
+                <i class="fas fa-info-circle"></i>
+                <strong>Dashboard Overview:</strong> 
+                Shows your assigned courses, today's active network sessions, and total enrolled students across all your courses.
+            </div>
+            <p class="text-center text-muted">Welcome, {{ user.get_full_name|default:user.username }}!</p>
+        </div>
+    </div>
+
+    <!-- 🚪 Navigation Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-info">
+                    <i class="fas fa-wifi"></i> Network Sessions
+                </a>
+                <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success">
+                    <i class="fas fa-plus"></i> Create Network Session
+                </a>
+                <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-warning">
+                    <i class="fas fa-microchip"></i> ESP32 Devices
+                </a>
+                <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📚 Assigned Courses -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">📚 Your Assigned Courses</h5>
+        </div>
+        <div class="card-body">
+            {% if assigned_courses %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Course Code</th>
+                                <th>Title</th>
+                                <th>Session</th>
+                                <th>Semester</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for assigned in assigned_courses %}
+                            <tr>
+                                <td><strong>{{ assigned.course.code }}</strong></td>
+                                <td>{{ assigned.course.title }}</td>
+                                <td><span class="badge bg-secondary">{{ assigned.session }}</span></td>
+                                <td><span class="badge bg-info">{{ assigned.semester }}</span></td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="{% url 'admin_ui:course_attendance' assigned.id %}" class="btn btn-primary btn-sm">
+                                            <i class="fas fa-clipboard-check"></i> Take Attendance
+                                        </a>
+                                        <a href="{% url 'admin_ui:network_session_create' %}?course={{ assigned.course.id }}" class="btn btn-success btn-sm">
+                                            <i class="fas fa-wifi"></i> Start Network Session
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-book fa-3x mb-3"></i>
+                        <h5>No courses assigned yet</h5>
+                        <p>Contact the superuser to get assigned to courses.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🌐 Active Network Sessions -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">🟢 Active Network Sessions</h5>
+        </div>
+        <div class="card-body">
+            {% if active_network_sessions %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Course</th>
+                                <th>ESP32 Device</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Connected Devices</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for session in active_network_sessions %}
+                            <tr>
+                                <td>
+                                    <strong>{{ session.course.code }}</strong>
+                                    <br><small class="text-muted">{{ session.course.title }}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ session.esp32_device.device_name }}</span>
+                                    <br><small class="text-muted">{{ session.esp32_device.ssid }}</small>
+                                </td>
+                                <td><span class="badge bg-secondary">{{ session.date }}</span></td>
+                                <td><span class="badge bg-warning">{{ session.start_time }} - Ongoing</span></td>
+                                <td>
+                                    <span class="badge bg-success">{{ session.connecteddevice_set.count }}</span>
+                                    <br><small class="text-muted">students connected</small>
+                                </td>
+                                <td>
+                                    <a href="{% url 'admin_ui:network_session_end' session.id %}" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-stop"></i> End Session
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-wifi fa-3x mb-3"></i>
+                        <h5>No active network sessions</h5>
+                        <p>Start a network session to track attendance via WiFi.</p>
+                        <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success">
+                            <i class="fas fa-plus"></i> Create Session
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 📊 Quick Stats -->
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card text-center bg-primary text-white">
+                <div class="card-body">
+                    <i class="fas fa-book fa-2x mb-2"></i>
+                    <h4>{{ assigned_courses.count }}</h4>
+                    <p class="mb-0">Assigned Courses</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center bg-info text-white">
+                <div class="card-body">
+                    <i class="fas fa-users fa-2x mb-2"></i>
+                    <h4>{{ total_students|default:"0" }}</h4>
+                    <p class="mb-0">Unique Students</p>
+                    <small class="text-light">Across all courses</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center bg-secondary text-white">
+                <div class="card-body">
+                    <i class="fas fa-graduation-cap fa-2x mb-2"></i>
+                    <h4>{{ total_enrollments|default:"0" }}</h4>
+                    <p class="mb-0">Total Course Enrollments</p>
+                    <small class="text-light">May include students in multiple courses</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

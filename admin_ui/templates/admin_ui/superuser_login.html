@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Superuser Login</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <!-- 🎓 Header Section -->
+            <div class="text-center mb-5">
+                <h1 class="display-4 text-primary">🎓</h1>
+                <h2 class="text-primary mb-2">Attendance System</h2>
+                <p class="text-muted">Administrative Control Center</p>
+            </div>
+
+            <!-- 🔐 Superuser Login Card -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-dark text-white text-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-user-shield"></i> Superuser Login
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="username" class="form-label">
+                                <i class="fas fa-user"></i> Username
+                            </label>
+                            <input type="text" class="form-control form-control-lg" id="username" name="username" 
+                                   placeholder="Enter superuser username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">
+                                <i class="fas fa-lock"></i> Password
+                            </label>
+                            <input type="password" class="form-control form-control-lg" id="password" name="password" 
+                                   placeholder="Enter password" required>
+                        </div>
+                        <button type="submit" class="btn btn-dark btn-lg w-100 mb-3">
+                            <i class="fas fa-sign-in-alt"></i> Login as Superuser
+                        </button>
+                    </form>
+
+                    <div class="text-center">
+                        <a href="{% url 'admin_ui:create_superuser' %}" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-plus"></i> Create New Superuser
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🚪 Access Options -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card h-100 border-primary">
+                        <div class="card-body text-center">
+                            <i class="fas fa-chalkboard-teacher fa-2x text-primary mb-2"></i>
+                            <h6 class="card-title">👨‍🏫 Lecturer Access</h6>
+                            <p class="card-text small text-muted">Login to manage courses and attendance</p>
+                            <a href="{% url 'admin_ui:lecturer_login' %}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-sign-in-alt"></i> Lecturer Login
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card h-100 border-success">
+                        <div class="card-body text-center">
+                            <i class="fas fa-user-graduate fa-2x text-success mb-2"></i>
+                            <h6 class="card-title">👨‍🎓 Student Access</h6>
+                            <p class="card-text small text-muted">View courses and attendance records</p>
+                            <a href="{% url 'admin_ui:student_login' %}" class="btn btn-outline-success btn-sm">
+                                <i class="fas fa-sign-in-alt"></i> Student Login
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-12">
+                    <div class="card border-info">
+                        <div class="card-body text-center">
+                            <i class="fas fa-folder-open fa-2x text-info mb-2"></i>
+                            <h6 class="card-title">🗂 Registration Officer Access</h6>
+                            <p class="card-text small text-muted">Manage student enrollment and course assignments</p>
+                            <a href="{% url 'admin_ui:registration_officer_login' %}" class="btn btn-outline-info btn-sm">
+                                <i class="fas fa-sign-in-alt"></i> Registration Officer Login
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📊 System Status -->
+            <div class="card mt-4 border-secondary">
+                <div class="card-header bg-light text-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i> System Information
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="text-primary">
+                                <i class="fas fa-users fa-2x"></i>
+                                <p class="mb-0 small">Multi-Role System</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-success">
+                                <i class="fas fa-wifi fa-2x"></i>
+                                <p class="mb-0 small">WiFi Attendance</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-info">
+                                <i class="fas fa-database fa-2x"></i>
+                                <p class="mb-0 small">Secure Database</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', function () {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('created') === '1') {
+      alert('🎉 Superuser account created successfully! Please log in.');
+    }
+  });
+</script>
+</body>
+</html>

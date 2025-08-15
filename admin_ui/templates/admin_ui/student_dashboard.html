@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-light">
+
+<div class="container py-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center">👨‍🎓 Student Dashboard</h2>
+            <p class="text-center text-muted">Welcome, {{ student.name }}!</p>
+        </div>
+    </div>
+
+    <!-- 🚪 Navigation Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📊 Student Info Card -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-user-graduate fa-3x mb-3"></i>
+                    <h4>{{ student.name }}</h4>
+                    <p class="mb-0">Matric: {{ student.matric_no }}</p>
+                    {% if student.department %}
+                        <p class="mb-0">Department: {{ student.department }}</p>
+                    {% endif %}
+                    {% if student.level %}
+                        <p class="mb-0">Level: {{ student.level }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-book fa-3x mb-3"></i>
+                    <h4>{{ enrolled_courses.count }}</h4>
+                    <p class="mb-0">Enrolled Courses</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📚 Enrolled Courses -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">📚 Your Enrolled Courses</h5>
+        </div>
+        <div class="card-body">
+            {% if enrolled_courses %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Course Code</th>
+                                <th>Title</th>
+                                <th>Session</th>
+                                <th>Semester</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for enrollment in enrolled_courses %}
+                            <tr>
+                                <td><strong>{{ enrollment.course.code }}</strong></td>
+                                <td>{{ enrollment.course.title }}</td>
+                                <td><span class="badge bg-secondary">{{ enrollment.session }}</span></td>
+                                <td><span class="badge bg-info">{{ enrollment.semester }}</span></td>
+                                <td>
+                                    <span class="badge bg-success">Enrolled</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-book fa-3x mb-3"></i>
+                        <h5>No courses enrolled yet</h5>
+                        <p>Contact your registration officer to enroll in courses.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 📈 Attendance Records -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">📈 Your Attendance Records</h5>
+        </div>
+        <div class="card-body">
+            {% if attendance_records %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Course</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Network Verified</th>
+                                <th>Session</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in attendance_records %}
+                            <tr>
+                                <td>
+                                    <strong>{{ record.attendance_session.course.code }}</strong>
+                                    <br><small class="text-muted">{{ record.attendance_session.course.title }}</small>
+                                </td>
+                                <td><span class="badge bg-secondary">{{ record.attendance_session.date }}</span></td>
+                                <td>
+                                    {% if record.status == 'present' %}
+                                        <span class="badge bg-success">Present</span>
+                                    {% elif record.status == 'absent' %}
+                                        <span class="badge bg-danger">Absent</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">{{ record.status|title }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if record.network_verified %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-wifi"></i> WiFi Verified
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="fas fa-times"></i> Not Verified
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ record.attendance_session.session }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-clipboard-list fa-3x mb-3"></i>
+                        <h5>No attendance records yet</h5>
+                        <p>Your attendance will appear here after lecturers mark it.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🌐 Recent Network Sessions -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">🌐 Recent Network Sessions</h5>
+        </div>
+        <div class="card-body">
+            {% if recent_sessions %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Course</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>ESP32 Device</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for session in recent_sessions %}
+                            <tr>
+                                <td>
+                                    <strong>{{ session.course.code }}</strong>
+                                    <br><small class="text-muted">{{ session.course.title }}</small>
+                                </td>
+                                <td><span class="badge bg-secondary">{{ session.date }}</span></td>
+                                <td>
+                                    <span class="badge bg-warning">
+                                        {{ session.start_time }}
+                                        {% if session.end_time %}
+                                            - {{ session.end_time }}
+                                        {% else %}
+                                            - Ongoing
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ session.esp32_device.device_name }}</span>
+                                    <br><small class="text-muted">{{ session.esp32_device.ssid }}</small>
+                                </td>
+                                <td>
+                                    {% if session.is_active %}
+                                        <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Ended</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-wifi fa-3x mb-3"></i>
+                        <h5>No network sessions yet</h5>
+                        <p>Network attendance sessions will appear here when lecturers create them.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 📖 How Network Attendance Works -->
+    <div class="card mt-4 shadow-sm">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">📖 How Network Attendance Works</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>📱 What You Need to Do:</h6>
+                    <ol>
+                        <li>Join the ESP32 WiFi network in your classroom</li>
+                        <li>Stay connected during the entire class</li>
+                        <li>Your attendance will be automatically recorded</li>
+                        <li>No manual check-in needed!</li>
+                    </ol>
+                </div>
+                <div class="col-md-6">
+                    <h6>🔍 How to Check Your Status:</h6>
+                    <ul>
+                        <li>Look for "WiFi Verified" badges in attendance records</li>
+                        <li>Network sessions show when WiFi attendance is active</li>
+                        <li>Contact your lecturer if you have connection issues</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

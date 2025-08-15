@@ -1,0 +1,146 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}Edit ESP32 Device - Attendance System{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">✏️ Edit ESP32 Device</h3>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="device_id" class="form-label">Device ID</label>
+                                    <input type="text" class="form-control" id="device_id" value="{{ device.device_id }}" readonly>
+                                    <div class="form-text">Device ID cannot be changed</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="device_name" class="form-label">Device Name *</label>
+                                    <input type="text" class="form-control" id="device_name" name="device_name" 
+                                           value="{{ device.device_name }}" required>
+                                    <div class="form-text">Human-readable name for the device</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="ssid" class="form-label">WiFi SSID *</label>
+                                    <input type="text" class="form-control" id="ssid" name="ssid" 
+                                           value="{{ device.ssid }}" required>
+                                    <div class="form-text">Network name that ESP32 will create</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="password" class="form-label">WiFi Password</label>
+                                    <input type="text" class="form-control" id="password" name="password" 
+                                           value="{{ device.password }}" placeholder="e.g., cs1012024 (optional)">
+                                    <div class="form-text">Password for the WiFi network (optional)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="location" class="form-label">Location *</label>
+                            <input type="text" class="form-control" id="location" name="location" 
+                                   value="{{ device.location }}" required>
+                            <div class="form-text">Physical location where this device will be placed</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                                       {% if device.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    Device is active and can be used for attendance
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-secondary me-md-2">
+                                <i class="fas fa-arrow-left"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Update Device
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 🚪 Navigation Buttons -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-center gap-2 flex-wrap">
+                        <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Back to ESP32 Devices
+                        </a>
+                        <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-warning">
+                            <i class="fas fa-network-wired"></i> Network Sessions
+                        </a>
+                        <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-success">
+                            <i class="fas fa-home"></i> Lecturer Dashboard
+                        </a>
+                        <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Device Information -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📊 Device Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Created:</strong> {{ device.created_at|date:"M d, Y H:i" }}</p>
+                            <p><strong>Last Seen:</strong> 
+                                {% if device.last_seen %}
+                                    {{ device.last_seen|date:"M d, Y H:i" }}
+                                {% else %}
+                                    <span class="text-muted">Never</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Current Status:</strong> 
+                                {% if device.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </p>
+                            <p><strong>Network Status:</strong> 
+                                {% if device.last_seen %}
+                                    {% if device.last_seen|timesince:"now"|slice:":2"|add:"0" < 5 %}
+                                        <span class="badge bg-success">Online</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">Offline</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-danger">Never Connected</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
