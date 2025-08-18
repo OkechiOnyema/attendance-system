@@ -1,8 +1,8 @@
 from django.urls import path, re_path
 from .views import (
-    # Superuser
-    superuser_login_view,
-    create_superuser_view,
+    # Admin
+admin_login_view,
+create_admin_view,
 
     # Lecturer
     lecturer_login_view,
@@ -55,9 +55,9 @@ from .views import (
 app_name = 'admin_ui'
 
 urlpatterns = [
-    # 👤 Superuser login and creation
-    path('superuser-login/', superuser_login_view, name='superuser_login'),
-    path('create-superuser/', create_superuser_view, name='create_superuser'),
+    # 👤 Admin login and creation
+    path('admin-login/', admin_login_view, name='admin_login'),
+    path('create-admin/', create_admin_view, name='create_admin'),
 
     # 👨‍🏫 Lecturer login and dashboard
     path('lecturer-login/', lecturer_login_view, name='lecturer_login'),

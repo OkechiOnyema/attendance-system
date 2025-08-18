@@ -10,8 +10,8 @@ from django.http import HttpResponseForbidden
 from urllib.parse import unquote
 from .forms import (
     LecturerLoginForm,
-    SuperUserCreationForm,
-    SuperUserLoginForm,
+    AdminCreationForm,
+    AdminLoginForm,
     OfficerLoginForm,
     CSVUploadForm,
     StudentCSVUploadForm
@@ -43,9 +43,9 @@ from .course_management import (
     test_database_connection
 )
 
-# 🔐 Superuser Login
-def superuser_login_view(request):
-    form = SuperUserLoginForm(request.POST or None)
+# 🔐 Admin Login
+def admin_login_view(request):
+    form = AdminLoginForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         user = authenticate(
             request,
@@ -54,14 +54,14 @@ def superuser_login_view(request):
         )
         if user and user.is_superuser:
             login(request, user)
-            messages.success(request, 'Welcome, Superuser!')
+            messages.success(request, 'Welcome, Admin!')
             return redirect('admin_ui:register_lecturer')
-        messages.error(request, 'Invalid credentials or not a superuser.')
-    return render(request, 'admin_ui/superuser_login.html', {'form': form})
+        messages.error(request, 'Invalid credentials or not an Admin.')
+    return render(request, 'admin_ui/admin_login.html', {'form': form})
 
-# 🧾 Superuser Creation
-def create_superuser_view(request):
-    form = SuperUserCreationForm(request.POST or None)
+# 🧾 Admin Creation
+def create_admin_view(request):
+    form = AdminCreationForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         if form.cleaned_data['passkey'] == settings.SUPERUSER_PASSKEY:
             User.objects.create_superuser(
@@ -69,10 +69,10 @@ def create_superuser_view(request):
                 email=form.cleaned_data['email'],
                 password=form.cleaned_data['password']
             )
-            messages.success(request, '✅ Superuser created successfully!')
-            return redirect('superuser_login')
+            messages.success(request, '✅ Admin created successfully!')
+            return redirect('admin_login')
         messages.error(request, '❌ Invalid passkey.')
-    return render(request, 'admin_ui/create_superuser.html', {'form': form})
+    return render(request, 'admin_ui/create_admin.html', {'form': form})
 
 # 👨‍🏫 Lecturer Login
 def lecturer_login_view(request):

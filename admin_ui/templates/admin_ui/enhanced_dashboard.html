@@ -3,7 +3,17 @@
 
 {% block content %}
 <div class="container-fluid py-4">
-    <h2 class="mb-4">🎓 Enhanced Lecturer Dashboard</h2>
+    <!-- Header with Back Button -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2 class="mb-0">🎓 Enhanced Lecturer Dashboard</h2>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left"></i> Back to Lecturer Dashboard
+            </a>
+        </div>
+    </div>
     
     <!-- Dashboard Summary -->
     <div class="row">

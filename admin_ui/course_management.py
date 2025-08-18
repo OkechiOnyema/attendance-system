@@ -497,7 +497,7 @@ def test_database_connection(request):
     Test database connection and basic operations
     """
     if not request.user.is_superuser:
-        messages.error(request, 'Access denied. Superuser required.')
+        messages.error(request, 'Access denied. Admin required.')
         return redirect('admin_ui:enhanced_dashboard')
     
     debug_info = []
@@ -556,7 +556,7 @@ def view_all_enrollments(request):
     View all enrollments across all courses for debugging purposes
     """
     if not request.user.is_superuser:
-        messages.error(request, 'Access denied. Superuser required.')
+        messages.error(request, 'Access denied. Admin required.')
         return redirect('admin_ui:enhanced_dashboard')
     
     # Get all enrollments grouped by session and semester

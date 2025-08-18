@@ -1,10 +1,10 @@
 from django.contrib import admin
 from django.urls import path, include
-from admin_ui.views import superuser_login_view, create_superuser_view, register_lecturer_view
+from admin_ui.views import admin_login_view, create_admin_view, register_lecturer_view
 
 urlpatterns = [
-    # 👋 Landing page for superuser login
-    path('', superuser_login_view, name='superuser_login'),
+    # 👋 Landing page for Admin login
+path('', admin_login_view, name='admin_login'),
 
     # ✅ Admin UI routes (namespaced)
     path('admin-panel/', include('admin_ui.urls', namespace='admin_ui')),
@@ -12,8 +12,8 @@ urlpatterns = [
     # 🛠 Django Admin
     path('admin/', admin.site.urls),
 
-    # 👤 Create Superuser (direct route — optional if already in admin_ui.urls)
-    path('create-superuser/', create_superuser_view, name='create_superuser'),
+    # 👤 Create Admin (direct route — optional if already in admin_ui.urls)
+path('create-admin/', create_admin_view, name='create_admin'),
 
     # 📊 Attendance App
     path('attendance/', include('attendance.urls')),
