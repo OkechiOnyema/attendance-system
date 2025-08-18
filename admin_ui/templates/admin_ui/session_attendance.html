@@ -1,0 +1,280 @@
+{% extends 'admin_ui/base.html' %}
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center mb-4">📊 Session Attendance Report</h2>
+            
+            <!-- Session Information Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">📚 Session Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Course:</strong> {{ course.code }} - {{ course.title }}</p>
+                            <p><strong>Lecturer:</strong> {{ lecturer.get_full_name|default:lecturer.username }}</p>
+                            <p><strong>Date:</strong> {{ network_session.date }}</p>
+                            <p><strong>Status:</strong> 
+                                {% if is_active %}
+                                    <span class="badge bg-success">🟢 Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">⚪ Ended</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Start Time:</strong> {{ network_session.start_time|time:"H:i" }}</p>
+                            {% if network_session.end_time %}
+                                <p><strong>End Time:</strong> {{ network_session.end_time|time:"H:i" }}</p>
+                                <p><strong>Duration:</strong> {{ duration_formatted }}</p>
+                            {% else %}
+                                <p><strong>Duration:</strong> Ongoing</p>
+                            {% endif %}
+                            <p><strong>ESP32 Device:</strong> {{ network_session.esp32_device.device_name }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card text-center bg-primary text-white">
+                        <div class="card-body">
+                            <i class="fas fa-users fa-2x mb-2"></i>
+                            <h4>{{ total_students }}</h4>
+                            <p class="mb-0">Total Students</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-success text-white">
+                        <div class="card-body">
+                            <i class="fas fa-check-circle fa-2x mb-2"></i>
+                            <h4>{{ present_students }}</h4>
+                            <p class="mb-0">Present</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-danger text-white">
+                        <div class="card-body">
+                            <i class="fas fa-times-circle fa-2x mb-2"></i>
+                            <h4>{{ absent_students }}</h4>
+                            <p class="mb-0">Absent</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-info text-white">
+                        <div class="card-body">
+                            <i class="fas fa-wifi fa-2x mb-2"></i>
+                            <h4>{{ network_verified }}</h4>
+                            <p class="mb-0">Network Verified</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-center gap-2 flex-wrap">
+                        <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Sessions
+                        </a>
+                        <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-primary">
+                            <i class="fas fa-home"></i> Dashboard
+                        </a>
+                        <a href="{% url 'admin_ui:view_all_attendance' %}" class="btn btn-info">
+                            <i class="fas fa-chart-bar"></i> View All Attendance
+                        </a>
+                        {% if is_active %}
+                        <a href="{% url 'admin_ui:network_session_end' network_session.id %}" class="btn btn-danger">
+                            <i class="fas fa-stop"></i> End Session
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Records Table -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">📋 Attendance Records</h5>
+                    <small class="text-light">Detailed attendance information for this session</small>
+                </div>
+                <div class="card-body">
+                    {% if attendance_records %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>Matric No</th>
+                                        <th>Status</th>
+                                        <th>Network Verified</th>
+                                        <th>Device MAC</th>
+                                        <th>Time Marked</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for record in attendance_records %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ record.student.name }}</strong>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ record.student.matric_no }}</span>
+                                        </td>
+                                        <td>
+                                            {% if record.status == 'present' %}
+                                                <span class="badge bg-success">✅ Present</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">❌ Absent</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if record.network_verified %}
+                                                <span class="badge bg-success">✅ Verified</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">⚠️ Not Verified</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if record.device_mac %}
+                                                <code>{{ record.device_mac }}</code>
+                                            {% else %}
+                                                <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small>{{ record.date }} at {{ record.time|time:"H:i" }}</small>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-info" 
+                                                    onclick="showRecordDetails('{{ record.id }}', '{{ record.student.name }}', '{{ record.status }}', '{{ record.network_verified }}', '{{ record.device_mac|default:"N/A" }}')">
+                                                <i class="fas fa-eye"></i> Details
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <div class="text-muted">
+                                <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                                <h5>No attendance records found</h5>
+                                <p>No students have been marked present or absent for this session yet.</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Connected Devices Table -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">🛰️ Connected Devices</h5>
+                    <small class="text-dark">Devices that connected to this network session</small>
+                </div>
+                <div class="card-body">
+                    {% if connected_devices %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Device MAC</th>
+                                        <th>Device Name</th>
+                                        <th>IP Address</th>
+                                        <th>Connected At</th>
+                                        <th>Disconnected At</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for device in connected_devices %}
+                                    <tr>
+                                        <td><code>{{ device.mac_address }}</code></td>
+                                        <td>{{ device.device_name|default:"Unknown" }}</td>
+                                        <td>{{ device.ip_address|default:"N/A" }}</td>
+                                        <td>{{ device.connected_at|time:"H:i" }}</td>
+                                        <td>
+                                            {% if device.disconnected_at %}
+                                                {{ device.disconnected_at|time:"H:i" }}
+                                            {% else %}
+                                                <span class="text-muted">Still connected</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if device.is_connected %}
+                                                <span class="badge bg-success">🟢 Connected</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">⚪ Disconnected</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <div class="text-muted">
+                                <i class="fas fa-wifi fa-3x mb-3"></i>
+                                <h5>No devices connected</h5>
+                                <p>No devices have connected to this network session yet.</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Record Details Modal -->
+<div class="modal fade" id="recordDetailsModal" tabindex="-1" aria-labelledby="recordDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recordDetailsModalLabel">Attendance Record Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="recordDetailsContent">
+                    <!-- Content will be populated by JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showRecordDetails(recordId, studentName, status, networkVerified, deviceMac) {
+    const content = document.getElementById('recordDetailsContent');
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-12">
+                <p><strong>Student:</strong> ${studentName}</p>
+                <p><strong>Status:</strong> ${status}</p>
+                <p><strong>Network Verified:</strong> ${networkVerified}</p>
+                <p><strong>Device MAC:</strong> ${deviceMac}</p>
+                <p><strong>Record ID:</strong> ${recordId}</p>
+            </div>
+        </div>
+    `;
+    
+    const modal = new bootstrap.Modal(document.getElementById('recordDetailsModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

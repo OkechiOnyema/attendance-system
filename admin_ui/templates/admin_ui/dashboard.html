@@ -22,7 +22,10 @@
                 <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-info">
                     <i class="fas fa-wifi"></i> Network Sessions
                 </a>
-                <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success">
+                <a href="{% url 'admin_ui:enhanced_dashboard' %}" class="btn btn-success">
+                    <i class="fas fa-plus"></i> Enhanced Dashboard
+                </a>
+                <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-info">
                     <i class="fas fa-plus"></i> Create Network Session
                 </a>
                 <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-warning">
@@ -62,6 +65,9 @@
                                 <td><span class="badge bg-info">{{ assigned.semester }}</span></td>
                                 <td>
                                     <div class="btn-group" role="group">
+                                        <a href="{% url 'admin_ui:course_management' assigned.course.id %}" class="btn btn-info btn-sm">
+                                            <i class="fas fa-users"></i> Manage Students
+                                        </a>
                                         <a href="{% url 'admin_ui:course_attendance' assigned.id %}" class="btn btn-primary btn-sm">
                                             <i class="fas fa-clipboard-check"></i> Take Attendance
                                         </a>

@@ -1,0 +1,37 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}Database Connection Test{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4">🔧 Database Connection Test</h2>
+    
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h5>Database Test Results</h5>
+        </div>
+        <div class="card-body">
+            {% if debug_info %}
+                {% for info in debug_info %}
+                    <div class="alert alert-info">
+                        {{ info }}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-warning">
+                    No debug information available
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="mt-4">
+        <a href="{% url 'admin_ui:enhanced_dashboard' %}" class="btn btn-primary">
+            ← Back to Dashboard
+        </a>
+        <a href="{% url 'admin_ui:test_database' %}" class="btn btn-info">
+            🔄 Run Test Again
+        </a>
+    </div>
+</div>
+{% endblock %}

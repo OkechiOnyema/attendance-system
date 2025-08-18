@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 WiFi Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.3);
+            border: 1px solid #4CAF50;
+        }
+        .error {
+            background: rgba(244, 67, 54, 0.3);
+            border: 1px solid #f44336;
+        }
+        .info {
+            background: rgba(33, 150, 243, 0.3);
+            border: 1px solid #2196F3;
+        }
+        .instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .device-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 ESP32 WiFi Configuration</h1>
+        
+        <div class="device-info">
+            <strong>Device:</strong> %DEVICE_NAME%<br>
+            <strong>Device ID:</strong> %DEVICE_ID%<br>
+            <strong>IP Address:</strong> %DEVICE_IP%
+        </div>
+        
+        <div class="instructions">
+            <strong>📋 Instructions:</strong><br>
+            1. Connect your phone to the "ESP32_Attendance" WiFi network<br>
+            2. Enter your phone's hotspot WiFi credentials below<br>
+            3. Click "Configure WiFi" to save settings<br>
+            4. The device will restart and connect to your hotspot
+        </div>
+        
+        <form id="wifiForm">
+            <div class="form-group">
+                <label for="ssid">Your Hotspot SSID:</label>
+                <input type="text" id="ssid" name="ssid" 
+                       placeholder="Enter your phone's hotspot name" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Your Hotspot Password:</label>
+                <input type="password" id="password" name="password" 
+                       placeholder="Enter your hotspot password" required>
+            </div>
+            
+            <button type="submit">🔗 Configure WiFi</button>
+        </form>
+        
+        <div id="status" class="status" style="display: none;"></div>
+    </div>
+    
+    <script>
+        document.getElementById('wifiForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const ssid = document.getElementById('ssid').value;
+            const password = document.getElementById('password').value;
+            
+            if (!ssid || !password) {
+                showStatus('Please fill in all fields', 'error');
+                return;
+            }
+            
+            // Send WiFi configuration
+            fetch('/configure_wifi', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'ssid=' + encodeURIComponent(ssid) + 
+                      '&password=' + encodeURIComponent(password)
+            })
+            .then(response => response.text())
+            .then(data => {
+                if (data.includes('configured')) {
+                    showStatus('✅ WiFi configured successfully! Device will restart...', 'success');
+                    // Wait for restart
+                    setTimeout(() => {
+                        showStatus('🔄 Device is restarting. Please wait...', 'info');
+                    }, 2000);
+                } else {
+                    showStatus('❌ ' + data, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('❌ Network error. Please try again.', 'error');
+            });
+        });
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 10000);
+            }
+        }
+        
+        // Auto-detect WiFi networks (if supported)
+        function scanWiFiNetworks() {
+            if ('WiFi' in navigator) {
+                navigator.WiFi.getCurrentNetwork().then(network => {
+                    if (network) {
+                        document.getElementById('ssid').value = network.ssid;
+                    }
+                }).catch(error => {
+                    console.log('Could not detect current network');
+                });
+            }
+        }
+        
+        // Try to detect current network on page load
+        window.addEventListener('load', scanWiFiNetworks);
+    </script>
+</body>
+</html>

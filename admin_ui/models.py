@@ -29,23 +29,6 @@ class AssignedCourse(models.Model):
         verbose_name = "Assigned Course"
         verbose_name_plural = "Assigned Courses"
 
-# 🗂️ Registration officer assignment
-class RegistrationOfficerAssignment(models.Model):
-    lecturer = models.ForeignKey(User, on_delete=models.CASCADE)
-    session = models.CharField(max_length=20)
-    semester = models.CharField(max_length=20)
-    level = models.CharField(max_length=10)
-    department = models.CharField(max_length=100)
-    assigned_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.lecturer.username} - {self.department} - {self.session} ({self.semester})"
-
-    class Meta:
-        ordering = ['-assigned_at']
-        verbose_name = "Registration Officer Assignment"
-        verbose_name_plural = "Registration Officer Assignments"
-
 # 🎓 Student model
 class Student(models.Model):
     matric_no = models.CharField("Matriculation Number", max_length=20, primary_key=True)
@@ -91,10 +74,17 @@ class FingerprintStudent(models.Model):
 class CourseEnrollment(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    session = models.CharField(max_length=9, default="2024/2025")  # e.g. "2024/2025"
+    semester = models.CharField(max_length=20, default="1st Semester")  # e.g. "1st Semester"
     enrolled_on = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.student.name} - {self.course.code}"
+        return f"{self.student.name} - {self.course.code} ({self.session}, {self.semester})"
+
+    class Meta:
+        unique_together = ['student', 'course', 'session', 'semester']  # Student can be in multiple courses per semester
+        verbose_name = "Course Enrollment"
+        verbose_name_plural = "Course Enrollments"
 
 # 🗓️ Attendance Session
 class AttendanceSession(models.Model):

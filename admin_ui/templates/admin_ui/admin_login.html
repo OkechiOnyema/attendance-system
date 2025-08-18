@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Superuser Login</title>
+    <title>Admin Login</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -17,11 +17,11 @@
                 <p class="text-muted">Administrative Control Center</p>
             </div>
 
-            <!-- 🔐 Superuser Login Card -->
+            <!-- 🔐 Admin Login Card -->
             <div class="card shadow-lg mb-4">
                 <div class="card-header bg-dark text-white text-center">
                     <h4 class="mb-0">
-                        <i class="fas fa-user-shield"></i> Superuser Login
+                        <i class="fas fa-user-shield"></i> Admin Login
                     </h4>
                 </div>
                 <div class="card-body p-4">
@@ -41,7 +41,7 @@
                                 <i class="fas fa-user"></i> Username
                             </label>
                             <input type="text" class="form-control form-control-lg" id="username" name="username" 
-                                   placeholder="Enter superuser username" required>
+                                   placeholder="Enter admin username" required>
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">
@@ -51,13 +51,13 @@
                                    placeholder="Enter password" required>
                         </div>
                         <button type="submit" class="btn btn-dark btn-lg w-100 mb-3">
-                            <i class="fas fa-sign-in-alt"></i> Login as Superuser
+                            <i class="fas fa-sign-in-alt"></i> Login as Admin
                         </button>
                     </form>
 
                     <div class="text-center">
-                        <a href="{% url 'admin_ui:create_superuser' %}" class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-plus"></i> Create New Superuser
+                        <a href="{% url 'admin_ui:create_admin' %}" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-plus"></i> Create New Admin
                         </a>
                     </div>
                 </div>
@@ -144,7 +144,7 @@
   window.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
     if (params.get('created') === '1') {
-      alert('🎉 Superuser account created successfully! Please log in.');
+      alert('🎉 Admin account created successfully! Please log in.');
     }
   });
 </script>

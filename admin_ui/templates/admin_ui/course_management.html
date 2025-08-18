@@ -1,0 +1,227 @@
+{% extends 'admin_ui/base.html' %}
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2 class="mb-0">
+                    📚 {{ course.code }} - {{ course.title }}
+                </h2>
+                <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            <p class="text-muted mb-0">
+                Session: {{ assigned_course.session }} | Semester: {{ assigned_course.semester }}
+            </p>
+        </div>
+    </div>
+
+    <!-- 📊 Course Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h4 class="card-title">{{ total_enrolled }}</h4>
+                    <p class="card-text">Total Enrolled Students</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h4 class="card-title">{{ course.code }}</h4>
+                    <p class="card-text">Course Code</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h4 class="card-title">{{ assigned_course.semester }}</h4>
+                    <p class="card-text">Current Semester</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📥 Upload Students Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-upload"></i> Upload Students via CSV
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.session.id_for_label }}" class="form-label">
+                                        {{ form.session.label }}
+                                    </label>
+                                    {{ form.session }}
+                                    {% if form.session.errors %}
+                                        <div class="text-danger">{{ form.session.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="{{ form.level.id_for_label }}" class="form-label">
+                                        {{ form.level.label }}
+                                    </label>
+                                    {{ form.level }}
+                                    {% if form.level.errors %}
+                                        <div class="text-danger">{{ form.level.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.csv_file.id_for_label }}" class="form-label">
+                                {{ form.csv_file.label }}
+                            </label>
+                            {{ form.csv_file }}
+                            {% if form.csv_file.errors %}
+                                <div class="text-danger">{{ form.csv_file.errors.0 }}</div>
+                            {% endif %}
+                            <div class="form-text">{{ form.csv_file.help_text }}</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-upload"></i> Upload Students
+                            </button>
+                            <a href="{% url 'admin_ui:download_enrollment_template' course.id %}" class="btn btn-outline-primary">
+                                <i class="fas fa-download"></i> Download Template
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="col-md-4">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> CSV Format:</h6>
+                        <p class="mb-1"><strong>Required columns:</strong></p>
+                        <ul class="mb-0 small">
+                            <li><code>matric_no</code> - Student matriculation number</li>
+                            <li><code>name</code> - Student full name</li>
+                            <li><code>department</code> - Student department (optional)</li>
+                            <li><code>level</code> - Student level (optional)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📋 Enrolled Students Table -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-users"></i> Enrolled Students ({{ total_enrolled }})
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if enrolled_students %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>#</th>
+                                <th>Matric No</th>
+                                <th>Name</th>
+                                <th>Department</th>
+                                <th>Level</th>
+                                <th>Enrolled On</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for enrollment in enrolled_students %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td><strong>{{ enrollment.student.matric_no }}</strong></td>
+                                <td>{{ enrollment.student.name }}</td>
+                                <td>{{ enrollment.student.department|default:"-" }}</td>
+                                <td>{{ enrollment.student.level|default:"-" }}</td>
+                                <td>{{ enrollment.enrolled_on|date:"M d, Y" }}</td>
+                                <td>
+                                    <form method="post" action="{% url 'admin_ui:remove_student_enrollment' course.id enrollment.student.matric_no %}" 
+                                          style="display: inline;" 
+                                          onsubmit="return confirm('Are you sure you want to remove {{ enrollment.student.name }} from this course?')">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            <i class="fas fa-user-minus"></i> Remove
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                {% if enrolled_students.has_other_pages %}
+                <nav aria-label="Enrolled students pagination">
+                    <ul class="pagination justify-content-center">
+                        {% if enrolled_students.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ enrolled_students.previous_page_number }}">Previous</a>
+                            </li>
+                        {% endif %}
+
+                        {% for num in enrolled_students.paginator.page_range %}
+                            {% if enrolled_students.number == num %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                            {% elif num > enrolled_students.number|add:'-3' and num < enrolled_students.number|add:'3' %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if enrolled_students.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ enrolled_students.next_page_number }}">Next</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+
+            {% else %}
+                <div class="text-center py-5">
+                    <div class="text-muted">
+                        <i class="fas fa-users fa-3x mb-3"></i>
+                        <h5>No students enrolled yet</h5>
+                        <p>Upload a CSV file above to enroll students in this course.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🚪 Quick Actions -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'admin_ui:course_attendance' assigned_course.id %}" class="btn btn-primary">
+                    <i class="fas fa-clipboard-check"></i> Take Attendance
+                </a>
+                <a href="{% url 'admin_ui:network_session_create' %}?course={{ course.id }}" class="btn btn-success">
+                    <i class="fas fa-wifi"></i> Start Network Session
+                </a>
+                <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-info">
+                    <i class="fas fa-list"></i> View Sessions
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

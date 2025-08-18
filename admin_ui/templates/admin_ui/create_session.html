@@ -1,0 +1,133 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}Start New Session{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">🚀 Start New Attendance Session</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label for="course_code" class="form-label">Select Course *</label>
+                            <select class="form-select" id="course_code" name="course_code" required>
+                                <option value="">Choose a course...</option>
+                                {% for course in courses %}
+                                <option value="{{ course.course_code }}" 
+                                        {% if request.GET.course == course.course_code %}selected{% endif %}>
+                                    {{ course.course_code }} - {{ course.course_title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Choose the course for this attendance session</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="duration" class="form-label">Session Duration (minutes) *</label>
+                            <input type="number" class="form-control" id="duration" name="duration" 
+                                   value="60" min="15" max="480" required>
+                            <div class="form-text">How long should this session last? (15 minutes to 8 hours)</div>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <h6>📋 Session Information</h6>
+                            <ul class="mb-0">
+                                <li><strong>Start Time:</strong> Will be set to current time when you submit</li>
+                                <li><strong>End Time:</strong> Automatically calculated based on duration</li>
+                                <li><strong>Status:</strong> Will be marked as active</li>
+                                <li><strong>ESP32 Devices:</strong> Can connect to this session automatically</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                🎯 Start Attendance Session
+                            </button>
+                            <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-outline-secondary">
+                                ← Back to Dashboard
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- ESP32 Device Status -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">🛰️ ESP32 Device Status</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Once you start a session, your ESP32 devices will automatically detect it and 
+                        begin accepting attendance submissions from students.
+                    </p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>✅ What Happens Next:</h6>
+                            <ul class="text-muted">
+                                <li>Session becomes active immediately</li>
+                                <li>ESP32 devices can query session status</li>
+                                <li>Students can mark attendance via ESP32</li>
+                                <li>Real-time attendance tracking begins</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>🔧 ESP32 Requirements:</h6>
+                            <ul class="text-muted">
+                                <li>Device must be configured in dashboard</li>
+                                <li>Device ID must match your configuration</li>
+                                <li>Device must be powered on and connected</li>
+                                <li>WiFi settings must be correct (if configured)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-select course if passed in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseParam = urlParams.get('course');
+    
+    if (courseParam) {
+        document.getElementById('course_code').value = courseParam;
+    }
+    
+    // Form validation
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const courseCode = document.getElementById('course_code').value;
+        const duration = document.getElementById('duration').value;
+        
+        if (!courseCode) {
+            e.preventDefault();
+            alert('Please select a course');
+            return;
+        }
+        
+        if (duration < 15 || duration > 480) {
+            e.preventDefault();
+            alert('Duration must be between 15 minutes and 8 hours');
+            return;
+        }
+        
+        // Confirm session start
+        if (!confirm('Are you sure you want to start this attendance session?')) {
+            e.preventDefault();
+            return;
+        }
+    });
+});
+</script>
+{% endblock %}

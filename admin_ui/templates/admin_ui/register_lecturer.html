@@ -138,99 +138,26 @@
         </div>
     </div>
 
-    <!-- Assign Registration Officer -->
+    <!-- 📚 Course Assignment Information -->
     <div class="card mb-4 shadow-sm">
-        <div class="card-header bg-warning text-dark">🛂 Assign Registration Officer</div>
+        <div class="card-header bg-info text-white">📚 Course Assignment Information</div>
         <div class="card-body">
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="assign_registration_officer" value="true">
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Select Lecturer</label>
-                        <select name="lecturer_id" class="form-select" required>
-                            {% for lecturer in lecturers %}
-                                <option value="{{ lecturer.id }}">{{ lecturer.username }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Session</label>
-                        <select name="session" class="form-select" required>
-                            <option value="">Select Session</option>
-                            <option value="2024/2025">2024/2025</option>
-                            <option value="2025/2026">2025/2026</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Semester</label>
-                        <select name="semester" class="form-select" required>
-                            <option value="">Select Semester</option>
-                            <option value="1st Semester">1st Semester</option>
-                            <option value="2nd Semester">2nd Semester</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Level</label>
-                        <select name="level" class="form-select" required>
-                            <option value="">Select Level</option>
-                            <option value="100">100</option>
-                            <option value="200">200</option>
-                            <option value="300">300</option>
-                            <option value="400">400</option>
-                        </select>
-                    </div>
-                    <div class="col-md-8 mb-3">
-                        <label class="form-label">Department</label>
-                        <select name="department" class="form-select" required>
-                            <option value="">Select Department</option>
-                            <option value="Computer Science">Computer Science</option>
-                            <option value="Electrical Engineering">Electrical Engineering</option>
-                            <option value="Mathematics">Mathematics</option>
-                            <option value="Physics">Physics</option>
-                        </select>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-warning w-100">Assign Registration Officer</button>
-            </form>
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                <strong>Note:</strong> Lecturers now directly manage their course enrollments through the course management system. 
+                No registration officer is needed.
+            </div>
+            <p class="mb-0">
+                After assigning courses to lecturers, they can:
+                <ul class="mb-0">
+                    <li>Upload student lists via CSV</li>
+                    <li>Manage course enrollments</li>
+                    <li>Take attendance</li>
+                    <li>Create network sessions</li>
+                </ul>
+            </p>
         </div>
     </div>
-
-    <!-- Display Assigned Officers -->
-    {% if assigned_officers %}
-        <h4 class="mt-4">📋 Assigned Registration Officers</h4>
-        <table class="table table-bordered table-striped">
-            <thead>
-                <tr>
-                    <th>Lecturer</th>
-                    <th>Session</th>
-                    <th>Semester</th>
-                    <th>Level</th>
-                    <th>Department</th>
-                    <th>Assigned On</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for officer in assigned_officers %}
-                    <tr>
-                        <td>{{ officer.lecturer.username }}</td>
-                        <td>{{ officer.session }}</td>
-                        <td>{{ officer.semester }}</td>
-                        <td>{{ officer.level }}</td>
-                        <td>{{ officer.department }}</td>
-                        <td>{{ officer.assigned_at|date:"M d, Y H:i" }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <div class="alert alert-info">No registration officers assigned yet.</div>
-    {% endif %}
 
     <!-- 🚪 Logout Button -->
     <div class="text-center mt-4">

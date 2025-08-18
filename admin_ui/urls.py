@@ -12,9 +12,16 @@ from .views import (
     register_lecturer_view,
     course_attendance,
 
-    # Registration Officer
-    registration_officer_login,
-    registration_officer_dashboard,
+    # Course Management (New)
+    course_management,
+    remove_student_enrollment,
+    download_enrollment_template,
+    
+    # Enhanced Dashboard
+    enhanced_dashboard,
+    upload_course_students,
+    view_all_enrollments,
+    test_database_connection,
 
     # Fingerprint & Enrollment
     enroll_fingerprint_view,
@@ -59,9 +66,16 @@ urlpatterns = [
     path('student-dashboard/', student_dashboard, name='student_dashboard'),
     path('register-lecturer/', register_lecturer_view, name='register_lecturer'),
 
-    # 🗂️ Registration officer
-    path('registration-officer-login/', registration_officer_login, name='registration_officer_login'),
-    path('registration-officer-dashboard/', registration_officer_dashboard, name='registration_officer_dashboard'),
+    # 📚 Course Management (New)
+    path('course/<int:course_id>/manage/', course_management, name='course_management'),
+    path('course/<int:course_id>/remove-student/<str:matric_no>/', remove_student_enrollment, name='remove_student_enrollment'),
+    path('course/<int:course_id>/download-template/', download_enrollment_template, name='download_enrollment_template'),
+    
+    # 🎯 Enhanced Dashboard
+    path('enhanced-dashboard/', enhanced_dashboard, name='enhanced_dashboard'),
+    path('upload-course-students/', upload_course_students, name='upload_course_students'),
+    path('debug/enrollments/', view_all_enrollments, name='view_all_enrollments'),
+    path('debug/test-database/', test_database_connection, name='test_database'),
 
     # 🖐️ Fingerprint enrollment and de-enrollment
     re_path(r'^enroll-fingerprint/(?P<matric_no>.+)/$', enroll_fingerprint_view, name='enroll_fingerprint'),

@@ -18,30 +18,17 @@ from .forms import (
 )
 from .models import (
     FingerprintStudent,
+    RegistrationOfficerAssignment,
     AssignedCourse,
     Student,
-    Course,
-    CourseEnrollment,
-    NetworkSession,
-    AttendanceSession,
-    AttendanceRecord,
-    ESP32Device,
-    ConnectedDevice
+    Course
 )
 from .utils import load_courses_from_csv
 from datetime import datetime, timedelta
 from django.utils import timezone
-
-# Import course management views
-from .course_management import (
-    course_management,
-    remove_student_enrollment,
-    download_enrollment_template,
-    enhanced_dashboard,
-    upload_course_students,
-    view_all_enrollments,
-    test_database_connection
-)
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import json
 
 # 🔐 Superuser Login
 def superuser_login_view(request):
@@ -168,12 +155,34 @@ def register_lecturer_view(request):
             except User.DoesNotExist:
                 messages.error(request, "Lecturer not found for course assignment.")
 
+        elif 'assign_registration_officer' in request.POST:
+            lecturer_id = request.POST.get('lecturer_id')
+            session = request.POST.get('session')
+            semester = request.POST.get('semester')
+            level = request.POST.get('level')
+            department = request.POST.get('department')
+
+            try:
+                lecturer = User.objects.get(id=lecturer_id)
+                RegistrationOfficerAssignment.objects.create(
+                    lecturer=lecturer,
+                    session=session,
+                    semester=semester,
+                    level=level,
+                    department=department
+                )
+                messages.success(request, "🛂 Registration officer assigned successfully!")
+            except User.DoesNotExist:
+                messages.error(request, "Lecturer not found for registration assignment.")
+
         return redirect('admin_ui:register_lecturer')
 
+    assigned_officers = RegistrationOfficerAssignment.objects.all().order_by('-assigned_at')
     context = {
         'courses': courses,
         'lecturers': lecturers,
         'departments': departments,
+        'assigned_officers': assigned_officers,
     }
     return render(request, 'admin_ui/register_lecturer.html', context)
 
@@ -187,13 +196,104 @@ from django.core.files.base import ContentFile
 from django.conf import settings
 from django.contrib.auth.models import User
 from .forms import CSVUploadForm, StudentCSVUploadForm
-from .models import Student, FingerprintStudent, Course
+from .models import Student, FingerprintStudent, RegistrationOfficerAssignment, Course
 from .utils import load_courses_from_csv
 import csv
 import os
 
-# 🗂 Registration Officer functionality has been removed
-# Lecturers now directly manage their course enrollments through the course management system
+# 🗂 Registration Officer Login
+def registration_officer_login(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None and user.is_authenticated:
+            if RegistrationOfficerAssignment.objects.filter(lecturer=user).exists():
+                login(request, user)
+                messages.success(request, "✅ Welcome, Registration Officer!")
+                return redirect('admin_ui:registration_officer_dashboard')
+            else:
+                messages.error(request, "❌ Access denied. You are not assigned as a registration officer.")
+        else:
+            messages.error(request, "❌ Invalid username or password.")
+    
+    return render(request, 'admin_ui/registration_officer_login.html')
+
+# 🗂 Registration Officer Dashboard
+@login_required
+def registration_officer_dashboard(request):
+    form = CSVUploadForm()
+    assignments = RegistrationOfficerAssignment.objects.filter(lecturer=request.user)
+    students = Student.objects.all()
+
+    if request.method == 'POST':
+        if 'csv_file' in request.FILES:
+            form = CSVUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                csv_file = form.cleaned_data['csv_file']
+                decoded_file = csv_file.read().decode('utf-8-sig').splitlines()
+                reader = csv.DictReader(decoded_file)
+
+                for row in reader:
+                    matric = (
+                        row.get('matric_no') or row.get('matric_number') or
+                        row.get('Matric Number') or row.get('Matric No') or
+                        row.get('Matric') or row.get('matric')
+                    )
+                    name = row.get('name') or row.get('Name') or row.get('Full Name')
+                    department = row.get('department') or row.get('Department') or ''
+                    level = row.get('level') or row.get('Level') or ''
+                    
+                    if matric and name:
+                        try:
+                            Student.objects.update_or_create(
+                                matric_no=matric.strip(),
+                                defaults={
+                                    'name': name.strip(),
+                                    'department': department.strip() if department else None,
+                                    'level': level.strip() if level else None
+                                }
+                            )
+                        except Exception as e:
+                            messages.error(request, f"❌ Error saving student {matric}: {str(e)}")
+                            continue
+                messages.success(request, "✅ Students uploaded successfully.")
+                students = Student.objects.all()
+            else:
+                messages.error(request, "❌ Invalid CSV file.")
+
+        elif 'matric_number' in request.POST:
+            matric = request.POST.get('matric_number')
+            try:
+                student = Student.objects.get(matric_no=matric.strip())
+                fingerprint, _ = FingerprintStudent.objects.get_or_create(student=student)
+                if not fingerprint.fingerprint_data or fingerprint.fingerprint_data == 'not_enrolled':
+                    fingerprint.fingerprint_data = "enrolled"
+                    fingerprint.save()
+                    messages.success(request, f"✅ Fingerprint enrolled for {student.name}")
+                else:
+                    messages.info(request, f"ℹ️ {student.name} is already enrolled.")
+                # Redirect to refresh the page and show updated status
+                return redirect('admin_ui:registration_officer_dashboard')
+            except Student.DoesNotExist:
+                messages.error(request, f"❌ Student with matric number {matric} not found.")
+
+    context = {
+        'form': form,
+        'students': students,
+        'assignments': assignments,
+    }
+    
+    # Add enrollment status for each student to ensure template displays correctly
+    for student in students:
+        try:
+            fingerprint = FingerprintStudent.objects.get(student=student)
+            student.enrollment_status = fingerprint.fingerprint_data
+        except FingerprintStudent.DoesNotExist:
+            student.enrollment_status = 'not_enrolled'
+    
+    return render(request, 'admin_ui/registration_officer_dashboard.html', context)
 
 # 📦 Upload CSV to Preview
 @login_required
@@ -291,21 +391,28 @@ def enroll_fingerprint_view(request, matric_no):
     matric_no = unquote(matric_no)
     student = get_object_or_404(Student, matric_no=matric_no)
     fingerprint, _ = FingerprintStudent.objects.get_or_create(student=student)
-    
-    # Get all available courses for display (but don't auto-enroll)
     courses = load_courses_from_csv('courses.csv')
 
     if request.method == 'POST':
-        # Only handle fingerprint enrollment, not course enrollment
+        selected_courses = request.POST.getlist('selected_courses')
         fingerprint.fingerprint_data = "fingerprint_enrolled_hash"
         fingerprint.save()
-        
-        messages.success(request, f"✅ Fingerprint saved for {student.name}")
-        
-        # Redirect to enhanced dashboard to manage course enrollments
-        return redirect('admin_ui:enhanced_dashboard')
 
-    # Show current enrollments without modifying them
+        CourseEnrollment.objects.filter(student=student).delete()
+        for course_data in courses:
+            if course_data['code'] in selected_courses:
+                # Create course enrollment with course data from CSV
+                course_obj, _ = Course.objects.get_or_create(
+                    code=course_data['code'],
+                    defaults={'title': course_data['title']}
+                )
+                CourseEnrollment.objects.create(
+                    student=student, 
+                    course=course_obj
+                )
+
+        messages.success(request, f"✅ Fingerprint and course enrollment saved for {student.name}")
+
     enrolled_courses = CourseEnrollment.objects.filter(student=student)
     enrolled_course_codes = enrolled_courses.values_list('course__code', flat=True)
 
@@ -501,6 +608,7 @@ from .forms import CSVUploadForm, StudentCSVUploadForm
 from .models import (
     Student,
     FingerprintStudent,
+    RegistrationOfficerAssignment,
     Course,
     ESP32Device,
     NetworkSession,
@@ -516,6 +624,10 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+
+def esp32_attendance_page(request):
+    """Serve the ESP32 attendance page for students"""
+    return render(request, 'admin_ui/esp32_attendance.html')
 
 @login_required
 @user_passes_test(lambda u: u.is_superuser or u.groups.filter(name='Lecturers').exists())
@@ -641,6 +753,9 @@ def network_session_create(request):
                 current_time = timezone.now()
                 end_time = current_time + timedelta(minutes=duration_minutes)
                 
+                # Generate unique network_session_id with seconds to ensure uniqueness
+                network_session_id = f"{course.code}_{session}_{semester}_{current_time.strftime('%Y%m%d_%H%M%S')}"
+                
                 network_session = NetworkSession.objects.create(
                     course=course,
                     lecturer=request.user,
@@ -650,7 +765,8 @@ def network_session_create(request):
                     date=current_time.date(),
                     start_time=current_time,  # Store full datetime instead of just time
                     end_time=end_time,  # Calculate end time based on duration
-                    is_active=True
+                    is_active=True,
+                    network_session_id=network_session_id
                 )
                 
                 messages.success(request, f'Network session for {course.code} created successfully! Duration: {duration_minutes} minutes')
@@ -1157,3 +1273,489 @@ def api_mark_attendance(request):
         'success': False,
         'message': 'Method not allowed'
     }, status=405)
+
+
+@login_required
+def session_attendance(request, session_id):
+    """View attendance records for a specific network session"""
+    try:
+        # Get the network session
+        network_session = get_object_or_404(NetworkSession, id=session_id)
+        
+        # Get all attendance records for this session
+        attendance_records = AttendanceRecord.objects.filter(
+            network_session=network_session
+        ).select_related('student').order_by('student__name')
+        
+        # Get connected devices for this session
+        connected_devices = ConnectedDevice.objects.filter(
+            network_session=network_session
+        ).order_by('-connected_at')
+        
+        # Calculate statistics
+        total_connected = connected_devices.count()
+        total_attendance = attendance_records.count()
+        present_count = attendance_records.filter(status='present').count()
+        absent_count = attendance_records.filter(status='absent').count()
+        
+        # Get enrolled students for this course (using CourseEnrollment)
+        enrolled_students = CourseEnrollment.objects.filter(course=network_session.course)
+        marked_students = [record.student.id for record in attendance_records]
+        unmarked_students = enrolled_students.exclude(student_id__in=marked_students)
+        
+        # Calculate duration if session has ended
+        duration_formatted = None
+        if network_session.end_time:
+            duration = network_session.end_time - network_session.start_time
+            hours = duration.seconds // 3600
+            minutes = (duration.seconds % 3600) // 60
+            duration_formatted = f"{hours}h {minutes}m"
+        
+        # Count network verified students
+        # Note: network_verified field may not exist in current database
+        network_verified = 0  # Default value if field doesn't exist
+        
+        context = {
+            'network_session': network_session,
+            'course': network_session.course,
+            'lecturer': network_session.lecturer,
+            'is_active': network_session.is_active,
+            'duration_formatted': duration_formatted,
+            'attendance_records': attendance_records,
+            'connected_devices': connected_devices,
+            'total_connected': total_connected,
+            'total_attendance': total_attendance,
+            'total_students': enrolled_students.count(),
+            'present_students': present_count,
+            'absent_students': absent_count,
+            'network_verified': network_verified,
+            'unmarked_students': unmarked_students,
+        }
+        
+        return render(request, 'admin_ui/session_attendance.html', context)
+        
+    except Exception as e:
+        messages.error(request, f'Error loading attendance records: {str(e)}')
+        return redirect('admin_ui:network_session_list')
+
+
+@login_required
+def view_all_attendance(request):
+    """View all attendance records from all sessions"""
+    try:
+        # Get all attendance records
+        attendance_records = AttendanceRecord.objects.select_related(
+            'student', 'attendance_session', 'network_session', 'attendance_session__course', 'network_session__course'
+        ).order_by('-marked_at')
+        
+        # Separate records by type
+        traditional_records = []
+        network_records = []
+        
+        for record in attendance_records:
+            if record.attendance_session:
+                # Traditional attendance session record
+                record.session_type = "Traditional"
+                record.session_id = record.attendance_session.session
+                record.course = record.attendance_session.course
+                record.date = record.attendance_session.date
+                traditional_records.append(record)
+            elif record.network_session:
+                # Network session record
+                record.session_type = "Network"
+                record.session_id = record.network_session.network_session_id or f"NS-{record.network_session.id}"
+                record.course = record.network_session.course
+                record.date = record.network_session.date
+                network_records.append(record)
+        
+        # Combine all records
+        all_records = traditional_records + network_records
+        
+        # Calculate statistics
+        total_records = len(all_records)
+        present_count = sum(1 for r in all_records if r.status == 'present')
+        absent_count = sum(1 for r in all_records if r.status == 'absent')
+        # Note: network_verified field may not exist in current database
+        network_verified = 0  # Default value if field doesn't exist
+        
+        context = {
+            'attendance_records': all_records,
+            'total_records': total_records,
+            'present_count': present_count,
+            'absent_count': absent_count,
+            'network_verified': network_verified,
+        }
+        
+        return render(request, 'admin_ui/view_all_attendance.html', context)
+        
+    except Exception as e:
+        messages.error(request, f'Error loading attendance records: {str(e)}')
+        return redirect('admin_ui:dashboard')
+
+# 🔄 Code-Free Smart Attendance API Endpoints
+
+@csrf_exempt
+def api_get_active_session(request):
+    """Get active session details for ESP32 device"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        # Get ESP32 device ID from query params
+        device_id = request.GET.get('device_id')
+        if not device_id:
+            return JsonResponse({'error': 'device_id parameter required'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True,
+            end_time__isnull=True  # Session hasn't ended
+        ).select_related('course', 'lecturer').first()
+        
+        if not active_session:
+            return JsonResponse({
+                'active': False,
+                'message': 'No active session found for this device'
+            })
+        
+        # Get enrolled students for this course
+        enrolled_students = CourseEnrollment.objects.filter(
+            course=active_session.course
+        ).select_related('student').values(
+            'student__id',
+            'student__matric_no',
+            'student__name'
+        )
+        
+        # Get existing attendance records for this session
+        existing_attendance = AttendanceRecord.objects.filter(
+            network_session=active_session
+        ).values_list('student_id', flat=True)
+        
+        session_data = {
+            'active': True,
+            'session_id': active_session.id,
+            'course_code': active_session.course.code,
+            'course_title': active_session.course.title,
+            'lecturer_name': active_session.lecturer.get_full_name() or active_session.lecturer.username,
+            'date': active_session.date.isoformat(),
+            'start_time': active_session.start_time.isoformat(),
+            'enrolled_students': list(enrolled_students),
+            'existing_attendance': list(existing_attendance),
+            'total_enrolled': len(enrolled_students),
+            'attendance_count': len(existing_attendance)
+        }
+        
+        return JsonResponse(session_data)
+        
+    except Exception as e:
+        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+
+@csrf_exempt
+def api_submit_attendance(request):
+    """Submit attendance from ESP32 device (no code required)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Validate required fields
+        required_fields = ['session_id', 'student_matric_no', 'device_id', 'client_ip']
+        for field in required_fields:
+            if field not in data:
+                return JsonResponse({'error': f'Missing required field: {field}'}, status=400)
+        
+        session_id = data['session_id']
+        student_matric_no = data['student_matric_no']
+        device_id = data['device_id']
+        client_ip = data['client_ip']
+        
+        # Validate session exists and is active
+        try:
+            network_session = NetworkSession.objects.get(
+                id=session_id,
+                is_active=True,
+                end_time__isnull=True
+            )
+        except NetworkSession.DoesNotExist:
+            return JsonResponse({'error': 'Session not found or inactive'}, status=404)
+        
+        # Validate ESP32 device
+        try:
+            esp32_device = ESP32Device.objects.get(device_id=device_id)
+        except ESP32Device.DoesNotExist:
+            return JsonResponse({'error': 'Invalid device ID'}, status=400)
+        
+        # 🔒 CRITICAL SECURITY CHECK: Verify student device is connected to ESP32 network
+        # Check if there's a ConnectedDevice record for this IP in the current session
+        connected_device = ConnectedDevice.objects.filter(
+            network_session=network_session,
+            ip_address=client_ip,
+            is_connected=True
+        ).first()
+        
+        if not connected_device:
+            return JsonResponse({
+                'error': 'Access denied: Device not connected to ESP32 network',
+                'details': 'Only devices connected to the ESP32 WiFi network can mark attendance'
+            }, status=403)
+        
+        # Validate student exists and is enrolled
+        try:
+            student = Student.objects.get(matric_no=student_matric_no)
+        except Student.DoesNotExist:
+            return JsonResponse({'error': 'Student not found'}, status=404)
+        
+        # Check if student is enrolled in this course
+        enrollment = CourseEnrollment.objects.filter(
+            student=student,
+            course=network_session.course
+        ).first()
+        
+        if not enrollment:
+            return JsonResponse({
+                'error': 'Student not enrolled in this course',
+                'student_name': student.name,
+                'course_code': network_session.course.code
+            }, status=400)
+        
+        # Check if attendance already recorded
+        existing_attendance = AttendanceRecord.objects.filter(
+            network_session=network_session,
+            student=student
+        ).first()
+        
+        if existing_attendance:
+            return JsonResponse({
+                'error': 'Attendance already recorded for this student',
+                'student_name': student.name,
+                'marked_at': existing_attendance.marked_at.isoformat()
+            }, status=400)
+        
+        # Create attendance record
+        attendance_record = AttendanceRecord.objects.create(
+            student=student,
+            network_session=network_session,
+            status='present',
+            network_verified=True,
+            esp32_device=esp32_device,
+            date=network_session.date,
+            time=timezone.now().time()
+        )
+        
+        # Update the connected device record with student info
+        connected_device.device_name = f"Student: {student.name}"
+        connected_device.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Attendance recorded for {student.name}',
+            'student_name': student.name,
+            'matric_no': student.matric_no,
+            'course_code': network_session.course.code,
+            'timestamp': attendance_record.marked_at.isoformat(),
+            'attendance_id': attendance_record.id,
+            'network_verified': True
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+
+@csrf_exempt
+def api_get_session_status(request):
+    """Get real-time session status for ESP32 dashboard"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        device_id = request.GET.get('device_id')
+        if not device_id:
+            return JsonResponse({'error': 'device_id parameter required'}, status=400)
+        
+        # Get active session
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True,
+            end_time__isnull=True
+        ).select_related('course', 'lecturer').first()
+        
+        if not active_session:
+            return JsonResponse({'active': False})
+        
+        # Get attendance statistics
+        total_enrolled = CourseEnrollment.objects.filter(
+            course=active_session.course
+        ).count()
+        
+        present_count = AttendanceRecord.objects.filter(
+            network_session=active_session,
+            status='present'
+        ).count()
+        
+        absent_count = total_enrolled - present_count
+        
+        # Get recent attendance (last 10)
+        recent_attendance = AttendanceRecord.objects.filter(
+            network_session=active_session
+        ).select_related('student').order_by('-marked_at')[:10]
+        
+        recent_list = [{
+            'student_name': record.student.name,
+            'matric_no': record.student.matric_no,
+            'timestamp': record.marked_at.strftime('%H:%M:%S'),
+            'status': record.status
+        } for record in recent_attendance]
+        
+        status_data = {
+            'active': True,
+            'session_id': active_session.id,
+            'course_code': active_session.course.code,
+            'course_title': active_session.course.title,
+            'lecturer': active_session.lecturer.get_full_name() or active_session.lecturer.username,
+            'start_time': active_session.start_time.strftime('%H:%M'),
+            'date': active_session.date.strftime('%Y-%m-%d'),
+            'statistics': {
+                'total_enrolled': total_enrolled,
+                'present': present_count,
+                'absent': absent_count,
+                'percentage': round((present_count / total_enrolled * 100), 1) if total_enrolled > 0 else 0
+            },
+            'recent_attendance': recent_list
+        }
+        
+        return JsonResponse(status_data)
+        
+    except Exception as e:
+        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+
+@csrf_exempt
+def api_device_connected_smart(request):
+    """Register when a device connects to ESP32 network (for smart attendance)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Validate required fields
+        required_fields = ['device_id', 'client_ip', 'client_mac']
+        for field in required_fields:
+            if field not in data:
+                return JsonResponse({'error': f'Missing required field: {field}'}, status=400)
+        
+        device_id = data['device_id']
+        client_ip = data['client_ip']
+        client_mac = data['client_mac']
+        client_name = data.get('client_name', 'Unknown Device')
+        
+        # Validate ESP32 device
+        try:
+            esp32_device = ESP32Device.objects.get(device_id=device_id)
+        except ESP32Device.DoesNotExist:
+            return JsonResponse({'error': 'Invalid device ID'}, status=400)
+        
+        # Find active network session for this ESP32
+        active_session = NetworkSession.objects.filter(
+            esp32_device=esp32_device,
+            is_active=True,
+            end_time__isnull=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({
+                'error': 'No active session found for this ESP32 device',
+                'message': 'Please start a network session first'
+            }, status=404)
+        
+        # Create or update connected device record
+        connected_device, created = ConnectedDevice.objects.get_or_create(
+            network_session=active_session,
+            ip_address=client_ip,
+            defaults={
+                'mac_address': client_mac,
+                'device_name': client_name,
+                'is_connected': True
+            }
+        )
+        
+        if not created:
+            # Update existing record
+            connected_device.mac_address = client_mac
+            connected_device.device_name = client_name
+            connected_device.is_connected = True
+            connected_device.disconnected_at = None
+            connected_device.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Device {client_ip} registered as connected',
+            'session_id': active_session.id,
+            'course_code': active_session.course.code,
+            'connected_at': connected_device.connected_at.isoformat()
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+
+@csrf_exempt
+def api_device_disconnected_smart(request):
+    """Register when a device disconnects from ESP32 network"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Validate required fields
+        required_fields = ['device_id', 'client_ip']
+        for field in required_fields:
+            if field not in data:
+                return JsonResponse({'error': f'Missing required field: {field}'}, status=400)
+        
+        device_id = data['device_id']
+        client_ip = data['client_ip']
+        
+        # Validate ESP32 device
+        try:
+            esp32_device = ESP32Device.objects.get(device_id=device_id)
+        except ESP32Device.DoesNotExist:
+            return JsonResponse({'error': 'Invalid device ID'}, status=400)
+        
+        # Find active network session for this ESP32
+        active_session = NetworkSession.objects.filter(
+            esp32_device=esp32_device,
+            is_active=True,
+            end_time__isnull=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found'}, status=404)
+        
+        # Mark device as disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                ip_address=client_ip
+            )
+            connected_device.is_connected = False
+            connected_device.disconnected_at = timezone.now()
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {client_ip} marked as disconnected'
+            })
+            
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({'error': 'Device not found in connected devices'}, status=404)
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)

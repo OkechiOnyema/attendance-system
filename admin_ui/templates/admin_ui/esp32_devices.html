@@ -1,0 +1,177 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}ESP32 Device Management{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">🛰️ ESP32 Device Management</h2>
+            
+            <!-- Add New Device Form -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">➕ Add/Configure ESP32 Device</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="device_id" class="form-label">Device ID *</label>
+                                    <input type="text" class="form-control" id="device_id" name="device_id" 
+                                           placeholder="e.g., ESP32_001" required>
+                                    <div class="form-text">Unique identifier for your ESP32 device</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="device_name" class="form-label">Device Name *</label>
+                                    <input type="text" class="form-control" id="device_name" name="device_name" 
+                                           placeholder="e.g., CS101 Classroom ESP32" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="wifi_ssid" class="form-label">WiFi Network Name</label>
+                                    <input type="text" class="form-control" id="wifi_ssid" name="wifi_ssid" 
+                                           placeholder="e.g., Lecturer_John_Phone">
+                                    <div class="form-text">Your phone's hotspot name (optional)</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="wifi_password" class="form-label">WiFi Password</label>
+                                    <input type="password" class="form-control" id="wifi_password" name="wifi_password" 
+                                           placeholder="e.g., lecturer123">
+                                    <div class="form-text">Your phone's hotspot password (optional)</div>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">💾 Save Device Configuration</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Device List -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">📱 Your ESP32 Devices</h5>
+                </div>
+                <div class="card-body">
+                    {% if devices %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Device ID</th>
+                                        <th>Name</th>
+                                        <th>WiFi Network</th>
+                                        <th>Status</th>
+                                        <th>Last Seen</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for device in devices %}
+                                    <tr>
+                                        <td><code>{{ device.device_id }}</code></td>
+                                        <td>{{ device.device_name }}</td>
+                                        <td>
+                                            {% if device.wifi_ssid %}
+                                                <span class="badge bg-success">{{ device.wifi_ssid }}</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">Not Configured</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if device.is_configured %}
+                                                <span class="badge bg-success">✅ Configured</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">⚠️ Needs Setup</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if device.last_seen %}
+                                                <small>{{ device.last_seen|timesince }} ago</small>
+                                            {% else %}
+                                                <span class="text-muted">Never</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'admin_ui:esp32_devices' %}?edit={{ device.device_id }}" 
+                                               class="btn btn-sm btn-outline-primary">✏️ Edit</a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted">No ESP32 devices configured yet.</p>
+                            <p class="text-muted">Add your first device above to get started!</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Setup Instructions -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📋 Setup Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>🔧 Step 1: Configure Device</h6>
+                            <ol>
+                                <li>Enter your ESP32 device details above</li>
+                                <li>Set WiFi network name and password (optional)</li>
+                                <li>Click "Save Device Configuration"</li>
+                            </ol>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>📱 Step 2: ESP32 Code Setup</h6>
+                            <ol>
+                                <li>Update your ESP32 code with the device ID</li>
+                                <li>Set the Django server URL</li>
+                                <li>Upload code to your ESP32 device</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <strong>💡 Pro Tip:</strong> If you don't configure WiFi settings, the ESP32 will work independently 
+                        and create its own attendance network. Students will connect directly to the ESP32.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-fill form if editing
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const editDevice = urlParams.get('edit');
+    
+    if (editDevice) {
+        // Find the device in the table and populate form
+        const deviceRow = document.querySelector(`tr:has(td:contains('${editDevice}')`);
+        if (deviceRow) {
+            const cells = deviceRow.querySelectorAll('td');
+            document.getElementById('device_id').value = cells[0].textContent.trim();
+            document.getElementById('device_name').value = cells[1].textContent.trim();
+            
+            // Extract WiFi SSID from badge
+            const wifiBadge = cells[2].querySelector('.badge');
+            if (wifiBadge && !wifiBadge.textContent.includes('Not Configured')) {
+                document.getElementById('wifi_ssid').value = wifiBadge.textContent.trim();
+            }
+            
+            // Focus on the form
+            document.getElementById('device_name').focus();
+        }
+    }
+});
+</script>
+{% endblock %}

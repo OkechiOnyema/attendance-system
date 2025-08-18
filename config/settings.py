@@ -87,7 +87,7 @@ if not DATABASE_URL or 'postgresql' not in DATABASE_URL:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("✅ Using SQLite database (no PostgreSQL URL or invalid format)")
+    print("Using SQLite database (no PostgreSQL URL or invalid format)")
 else:
     # Try PostgreSQL only if we have a valid URL
     try:
@@ -95,10 +95,10 @@ else:
         DATABASES = {
             'default': dj_database_url.parse(DATABASE_URL)
         }
-        print("✅ Using PostgreSQL database from DATABASE_URL")
+        print("Using PostgreSQL database from DATABASE_URL")
     except Exception as e:
-        print(f"❌ Error with PostgreSQL: {e}")
-        print("⚠️ Falling back to SQLite")
+        print(f"Error with PostgreSQL: {e}")
+        print("Falling back to SQLite")
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.sqlite3',
@@ -109,25 +109,25 @@ else:
 # Auto-create database tables if they don't exist
 import os
 if os.environ.get('AUTO_CREATE_DB', 'True') == 'True':
-    print("🔧 Auto-creating database tables...")
+    print("Auto-creating database tables...")
     try:
         from django.core.management import execute_from_command_line
         import sys
         # Run migrations silently
         execute_from_command_line(['manage.py', 'migrate', '--noinput'])
-        print("✅ Database tables created successfully!")
+        print("Database tables created successfully!")
         
         # Create superuser if none exists
         from django.contrib.auth.models import User
         if not User.objects.exists():
             User.objects.create_superuser('admin', 'admin@example.com', 'admin123')
-            print("✅ Superuser 'admin' created with password 'admin123'")
+            print("Superuser 'admin' created with password 'admin123'")
         else:
-            print("ℹ️ Superuser already exists")
+            print("Superuser already exists")
             
     except Exception as e:
-        print(f"⚠️ Auto-creation failed: {e}")
-        print("📝 You may need to run migrations manually")
+        print(f"Auto-creation failed: {e}")
+        print("You may need to run migrations manually")
 
 
 # Password validation

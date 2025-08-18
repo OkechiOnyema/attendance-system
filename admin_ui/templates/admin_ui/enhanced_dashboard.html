@@ -1,0 +1,191 @@
+{% extends 'admin_ui/base.html' %}
+{% load admin_ui_extras %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h2 class="mb-4">🎓 Enhanced Lecturer Dashboard</h2>
+    
+    <!-- Dashboard Summary -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5>📊 Dashboard Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-primary">{{ assigned_courses.count }}</h4>
+                                <p><strong>Assigned Courses</strong></p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-success">{{ total_students }}</h4>
+                                <p><strong>Total Students</strong></p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-info">{{ total_enrollments }}</h4>
+                                <p><strong>Total Enrollments</strong></p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-warning">{{ course_enrollments|length }}</h4>
+                                <p><strong>Active Courses</strong></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {% if error_message %}
+                        <div class="alert alert-danger mt-3">
+                            <strong>Error:</strong> {{ error_message }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Course Upload Section (Simplified) -->
+    {% if assigned_courses %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5>📚 Your Assigned Courses</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            {% for assigned in assigned_courses %}
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card border-primary">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0">{{ assigned.course.code }} - {{ assigned.course.title }}</h6>
+                                        <small>{{ assigned.session }} | {{ assigned.semester }}</small>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Course:</strong> {{ assigned.course.code }}</p>
+                                        <p><strong>Session:</strong> {{ assigned.session }}</p>
+                                        <p><strong>Semester:</strong> {{ assigned.semester }}</p>
+                                        
+                                        <!-- Show enrolled students for this course -->
+                                        {% if course_enrollments|get_item:assigned.course.id %}
+                                            {% with course_data=course_enrollments|get_item:assigned.course.id %}
+                                            <div class="alert alert-info">
+                                                <strong>📚 Enrolled Students: {{ course_data.count }}</strong>
+                                                <div class="mt-2">
+                                                    {% for enrollment in course_data.enrollments|slice:":5" %}
+                                                        <span class="badge bg-secondary me-1">{{ enrollment.student.name }}</span>
+                                                    {% endfor %}
+                                                    {% if course_data.count > 5 %}
+                                                        <span class="badge bg-warning">+{{ course_data.count|add:"-5" }} more</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            {% endwith %}
+                                        {% else %}
+                                            <div class="alert alert-warning">
+                                                <strong>No students enrolled yet</strong>
+                                            </div>
+                                        {% endif %}
+                                        
+                                        <form method="post" action="{% url 'admin_ui:upload_course_students' %}" enctype="multipart/form-data">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="course_id" value="{{ assigned.course.id }}">
+                                            <input type="hidden" name="session" value="{{ assigned.session }}">
+                                            <input type="hidden" name="semester" value="{{ assigned.semester }}">
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label">Upload Student CSV:</label>
+                                                <input type="file" name="csv_file" class="form-control" accept=".csv" required>
+                                            </div>
+                                            
+                                            <button type="submit" class="btn btn-primary btn-sm">
+                                                Upload for {{ assigned.course.code }}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-warning">
+            <strong>No courses assigned yet.</strong> Contact the superuser to get assigned to courses.
+        </div>
+    {% endif %}
+    
+    <!-- All Enrollments Summary -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5>📚 All Course Enrollments Summary</h5>
+                </div>
+                <div class="card-body">
+                    {% if course_enrollments %}
+                        <div class="row">
+                            {% for course_id, course_data in course_enrollments.items %}
+                            <div class="col-md-6 mb-3">
+                                <div class="card border-info">
+                                    <div class="card-header bg-info text-white">
+                                        <h6 class="mb-0">{{ course_data.course.code }} - {{ course_data.course.title }}</h6>
+                                        <small>{{ course_data.assigned.session }} | {{ course_data.assigned.semester }}</small>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Enrolled Students:</strong> {{ course_data.count }}</p>
+                                        <div class="mt-2">
+                                            {% for enrollment in course_data.enrollments|slice:":8" %}
+                                                <span class="badge bg-secondary me-1 mb-1">{{ enrollment.student.name }}</span>
+                                            {% endfor %}
+                                            {% if course_data.count > 8 %}
+                                                <span class="badge bg-warning">+{{ course_data.count|add:"-8" }} more</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <strong>No enrollments found.</strong> Upload student CSV files to see enrollments here.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Debug Section -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5>🔍 Debug & Monitoring</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Current Status:</strong> The system now allows students to be enrolled in multiple courses simultaneously.</p>
+                    <p><strong>Previous Issue:</strong> Students were being removed from other courses when uploading to a new course.</p>
+                    <p><strong>Fix Applied:</strong> Modified enrollment logic to preserve existing enrollments.</p>
+                    
+                    <a href="{% url 'admin_ui:view_all_enrollments' %}" class="btn btn-warning">
+                        🔍 View All Enrollments (Debug)
+                    </a>
+                    <a href="{% url 'admin_ui:test_database' %}" class="btn btn-info">
+                        🔧 Test Database Connection
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

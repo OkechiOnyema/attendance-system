@@ -31,9 +31,9 @@ class SuperUserLoginForm(forms.Form):
     }))
 
 class LecturerLoginForm(forms.Form):
-    email = forms.EmailField(label='Email', widget=forms.EmailInput(attrs={
+    username = forms.CharField(label='Username', widget=forms.TextInput(attrs={
         'class': 'form-control',
-        'placeholder': 'Enter email'
+        'placeholder': 'Enter username'
     }))
     password = forms.CharField(label='Password', widget=forms.PasswordInput(attrs={
         'class': 'form-control',
@@ -52,10 +52,31 @@ class RegistrationOfficerLoginForm(forms.Form):
 class CSVUploadForm(forms.Form):
     csv_file = forms.FileField(label="Upload Student CSV")
 
-# 📥 CSV Upload for Admin Preview Flow
+# 📥 CSV Upload for Lecturers to enroll students in their courses
 class StudentCSVUploadForm(forms.Form):
-    session = forms.CharField(label='Academic Session', required=False)
-    level = forms.CharField(label='Level', required=False)
-    csv_file = forms.FileField(label='Upload Student CSV')
+    session = forms.CharField(
+        label='Academic Session', 
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'e.g., 2024/2025'
+        })
+    )
+    level = forms.CharField(
+        label='Level', 
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'e.g., 100, 200, 300, 400'
+        })
+    )
+    csv_file = forms.FileField(
+        label='Upload Student CSV',
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': '.csv'
+        }),
+        help_text='Upload a CSV file with columns: matric_no, name, department, level'
+    )
 
 

@@ -1,0 +1,79 @@
+{% extends 'admin_ui/base.html' %}
+
+{% block title %}All Enrollments - Debug View{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4">🔍 All Enrollments Debug View</h2>
+    
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h5>Total Enrollments</h5>
+                    <h3>{{ total_enrollments }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h5>Total Students</h5>
+                    <h3>{{ total_students }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h5>Total Courses</h5>
+                    <h3>{{ total_courses }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <h5>Sessions</h5>
+                    <h3>{{ enrollments_by_session|length }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% for session_key, courses in enrollments_by_session.items %}
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">📚 {{ session_key }}</h5>
+        </div>
+        <div class="card-body">
+            {% for course_code, enrollments in courses.items %}
+            <div class="mb-3">
+                <h6 class="text-primary">📖 {{ course_code }} ({{ enrollments|length }} students)</h6>
+                <div class="row">
+                    {% for enrollment in enrollments %}
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted">
+                            {{ enrollment.student.matric_no }} - {{ enrollment.student.name }}
+                        </small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% empty %}
+    <div class="alert alert-info">
+        <h5>📝 No enrollments found</h5>
+        <p>There are currently no student enrollments in the system.</p>
+    </div>
+    {% endfor %}
+    
+    <div class="mt-4">
+        <a href="{% url 'admin_ui:enhanced_dashboard' %}" class="btn btn-primary">
+            ← Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}
