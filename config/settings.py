@@ -177,10 +177,10 @@ if not DEBUG:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-LOGIN_URL = '/superuser-login/'
-#LOGIN_URL = '/admin-panel/superuser_login/'  # 👈 Customize this to whatever you like!
-LOGIN_REDIRECT_URL = '/admin-panel/superuser_login/'
-#LOGIN_REDIRECT_URL = '/superuser_login/'
+LOGIN_URL = '/admin-login/'
+#LOGIN_URL = '/admin-panel/admin_login/'  # 👈 Customize this to whatever you like!
+LOGIN_REDIRECT_URL = '/admin-panel/admin_login/'
+#LOGIN_REDIRECT_URL = '/admin_login/'
 #LOGIN_REDIRECT_URL = '/attendance/'
 SUPERUSER_PASSKEY = 'super123'  # 🛡️ Replace with your real secret
 #LOGIN_URL = '/accounts/login/'            # Page shown when login is required

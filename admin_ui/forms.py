@@ -9,7 +9,7 @@ class AdminCreationForm(forms.Form):
 
 # 👨‍🏫 Lecturer Registration
 class LecturerRegistrationForm(forms.Form):
-    superuser = forms.CharField(
+    admin = forms.CharField(
         label='Registered By',
         required=False,
         widget=forms.TextInput(attrs={'readonly': 'readonly'})

@@ -468,7 +468,7 @@ def course_attendance(request, assigned_id):
         'enrolled_students': enrolled_students
     })
 
-# 📊 Superuser Attendance Dashboard
+# 📊 Admin Attendance Dashboard
 @login_required
 @user_passes_test(lambda u: u.is_superuser)
 def attendance_dashboard(request):
@@ -486,7 +486,7 @@ def view_assignments(request):
 def logout_view(request):
     logout(request)
     messages.success(request, "✅ You have been successfully logged out.")
-    return redirect('superuser_login')
+    return redirect('admin_login')
 
 # 🛰️ ESP32 Network-Based Attendance System
 
@@ -520,7 +520,7 @@ from django.utils.decorators import method_decorator
 @login_required
 @user_passes_test(lambda u: u.is_superuser or u.groups.filter(name='Lecturers').exists())
 def esp32_device_list(request):
-    """List ESP32 devices for superusers and lecturers"""
+    """List ESP32 devices for Admins and lecturers"""
     devices = ESP32Device.objects.all().order_by('-created_at')
     return render(request, 'admin_ui/esp32_device_list.html', {
         'devices': devices
@@ -588,7 +588,7 @@ def esp32_device_delete(request, device_id):
 @login_required
 @user_passes_test(lambda u: u.is_superuser or u.groups.filter(name='Lecturers').exists())
 def network_session_list(request):
-    """List network sessions for lecturers and superusers"""
+    """List network sessions for lecturers and Admins"""
     if request.user.is_superuser:
         all_sessions = NetworkSession.objects.all().order_by('-date', '-start_time')
     else:

@@ -18,7 +18,7 @@ def attendance_dashboard(request):
 def custom_logout_view(request):
     logout(request)
     messages.success(request, "✅ You have been logged out successfully.")
-    return redirect('superuser_login')  # or any named URL you prefer
+    return redirect('admin_login')  # or any named URL you prefer
 
 def mark_attendance(request, student_id):
     # your attendance logic here
