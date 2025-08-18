@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Start Network Session - Attendance System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'admin_ui:dashboard' %}">
+                🎓 Attendance System
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{% url 'admin_ui:dashboard' %}">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+                <a class="nav-link" href="{% url 'admin_ui:logout' %}">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0">
+                            <i class="fas fa-wifi"></i> Start Network Attendance Session
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle"></i> How Network Attendance Works:</h6>
+                            <ol class="mb-0">
+                                <li>Select a course and start the session</li>
+                                <li>ESP32 device will automatically connect to the system</li>
+                                <li>Students connect to ESP32's open WiFi network</li>
+                                <li>Students mark attendance through the WiFi portal</li>
+                                <li>Attendance is automatically recorded in real-time</li>
+                            </ol>
+                        </div>
+
+                        <form method="post">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="course_id" class="form-label">
+                                    <i class="fas fa-book"></i> Select Course
+                                </label>
+                                <select class="form-select" id="course_id" name="course_id" required>
+                                    <option value="">Choose a course...</option>
+                                    {% for assignment in assigned_courses %}
+                                        <option value="{{ assignment.course.id }}">
+                                            {{ assignment.course.code }} - {{ assignment.course.title }}
+                                            ({{ assignment.session }}, {{ assignment.semester }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="session" class="form-label">
+                                            <i class="fas fa-calendar"></i> Academic Session
+                                        </label>
+                                        <input type="text" class="form-control" id="session" name="session" 
+                                               value="{{ current_session }}" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="semester" class="form-label">
+                                            <i class="fas fa-semester"></i> Semester
+                                        </label>
+                                        <input type="text" class="form-control" id="semester" name="semester" 
+                                               value="{{ current_semester }}" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-play"></i> Start Network Session
+                                </button>
+                                <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ESP32 Device Status -->
+                <div class="card mt-4 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="fas fa-microchip"></i> ESP32 Device Status
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="badge bg-success me-2">
+                                        <i class="fas fa-circle"></i>
+                                    </div>
+                                    <span>Device Ready</span>
+                                </div>
+                                <small class="text-muted">ESP32 devices will automatically connect when session starts</small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="badge bg-info me-2">
+                                        <i class="fas fa-wifi"></i>
+                                    </div>
+                                    <span>WiFi Network</span>
+                                </div>
+                                <small class="text-muted">Open network (no password required)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

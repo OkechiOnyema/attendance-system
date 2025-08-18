@@ -50,6 +50,12 @@ create_admin_view,
 
     # 📋 View Assignments
     view_assignments,
+    
+    # 🎯 ESP32-Based Attendance Marking
+    start_network_session_view,
+    network_session_active_view,
+    end_network_session_view,
+    student_attendance_marking_view,
 )
 
 app_name = 'admin_ui'
@@ -107,4 +113,10 @@ urlpatterns = [
 
     # 📋 View Assignments
     path('view-assignments/', view_assignments, name='view_assignments'),
+    
+    # 🎯 ESP32-Based Attendance Marking
+    path('start-network-session/', start_network_session_view, name='start_network_session'),
+    path('network-session/<int:session_id>/active/', network_session_active_view, name='network_session_active'),
+    path('network-session/<int:session_id>/end/', end_network_session_view, name='end_network_session'),
+    path('student-attendance-marking/', student_attendance_marking_view, name='student_attendance_marking'),
 ]

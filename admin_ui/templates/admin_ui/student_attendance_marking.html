@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mark Attendance - ESP32 WiFi Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .attendance-card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .wifi-icon {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-5">
+                <!-- WiFi Status Header -->
+                <div class="text-center mb-4">
+                    <div class="wifi-icon mb-3">
+                        <i class="fas fa-wifi fa-4x text-white"></i>
+                    </div>
+                    <h4 class="text-white mb-2">ESP32 WiFi Portal</h4>
+                    <p class="text-white-50 mb-0">Mark your attendance via WiFi connection</p>
+                </div>
+
+                <!-- Attendance Form -->
+                <div class="card attendance-card shadow-lg">
+                    <div class="card-header bg-primary text-white text-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-check-circle"></i> Mark Attendance
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <!-- Success/Error Messages -->
+                        <div id="message-container"></div>
+
+                        <form id="attendance-form" method="post">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="matric_no" class="form-label">
+                                    <i class="fas fa-id-card"></i> Matriculation Number
+                                </label>
+                                <input type="text" class="form-control form-control-lg" id="matric_no" 
+                                       name="matric_no" placeholder="e.g., 2021/123456" required>
+                                <div class="form-text">Enter your exact matriculation number</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="name" class="form-label">
+                                    <i class="fas fa-user"></i> Full Name
+                                </label>
+                                <input type="text" class="form-control form-control-lg" id="name" 
+                                       name="name" placeholder="Enter your full name" required>
+                                <div class="form-text">Enter your name as it appears on your ID card</div>
+                            </div>
+
+                            <!-- Hidden device MAC field -->
+                            <input type="hidden" id="device_mac" name="device_mac">
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                                    <i class="fas fa-check"></i> Mark Attendance
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Loading Spinner -->
+                        <div id="loading" class="text-center mt-3" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Marking attendance...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Instructions -->
+                <div class="card mt-4 attendance-card">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-info-circle"></i> How It Works
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <ol class="mb-0 small">
+                            <li>Make sure you're connected to the ESP32 WiFi network</li>
+                            <li>Enter your correct matriculation number</li>
+                            <li>Enter your full name exactly as registered</li>
+                            <li>Click "Mark Attendance" to submit</li>
+                            <li>You'll see a confirmation message if successful</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Connection Status -->
+                <div class="card mt-4 attendance-card">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-signal"></i> Connection Status
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="badge bg-success me-2">
+                                <i class="fas fa-circle"></i>
+                            </div>
+                            <span>Connected to ESP32 WiFi</span>
+                        </div>
+                        <small class="text-muted d-block mt-1">
+                            Network: <span id="network-name">ESP32_Attendance</span>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get device MAC address (this would be set by ESP32)
+        function getDeviceMAC() {
+            // In a real implementation, ESP32 would provide this
+            // For now, we'll generate a random one for demonstration
+            return 'XX:XX:XX:XX:XX:XX';
+        }
+
+        // Initialize form
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('device_mac').value = getDeviceMAC();
+            
+            // Form submission
+            document.getElementById('attendance-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const submitBtn = document.getElementById('submit-btn');
+                const loading = document.getElementById('loading');
+                const messageContainer = document.getElementById('message-container');
+                
+                // Show loading state
+                submitBtn.disabled = true;
+                loading.style.display = 'block';
+                messageContainer.innerHTML = '';
+                
+                // Get form data
+                const formData = new FormData(this);
+                
+                // Submit via AJAX
+                fetch('', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    submitBtn.disabled = false;
+                    
+                    if (data.success) {
+                        messageContainer.innerHTML = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="fas fa-check-circle"></i> ${data.message}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        
+                        // Clear form on success
+                        document.getElementById('attendance-form').reset();
+                        
+                        // Show success animation
+                        submitBtn.innerHTML = '<i class="fas fa-check"></i> Attendance Marked!';
+                        submitBtn.classList.remove('btn-primary');
+                        submitBtn.classList.add('btn-success');
+                        
+                        setTimeout(() => {
+                            submitBtn.innerHTML = '<i class="fas fa-check"></i> Mark Attendance';
+                            submitBtn.classList.remove('btn-success');
+                            submitBtn.classList.add('btn-primary');
+                        }, 3000);
+                        
+                    } else {
+                        messageContainer.innerHTML = `
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                <i class="fas fa-exclamation-triangle"></i> ${data.message}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    loading.style.display = 'none';
+                    submitBtn.disabled = false;
+                    
+                    messageContainer.innerHTML = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i> Error: ${error.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `;
+                });
+            });
+        });
+
+        // Simulate network name detection
+        function updateNetworkName() {
+            const networks = ['ESP32_CS101', 'ESP32_CS102', 'ESP32_CS201', 'ESP32_CS301'];
+            const randomNetwork = networks[Math.floor(Math.random() * networks.length)];
+            document.getElementById('network-name').textContent = randomNetwork;
+        }
+        
+        // Update network name every few seconds to simulate ESP32 activity
+        setInterval(updateNetworkName, 5000);
+        updateNetworkName();
+    </script>
+</body>
+</html>

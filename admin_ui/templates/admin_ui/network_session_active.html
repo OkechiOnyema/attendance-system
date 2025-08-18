@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Active Network Session - Attendance System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <meta http-equiv="refresh" content="30">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'admin_ui:dashboard' %}">
+                🎓 Attendance System
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="fas fa-circle text-light"></i> Session Active
+                </span>
+                <a class="nav-link" href="{% url 'admin_ui:end_network_session' network_session.id %}">
+                    <i class="fas fa-stop"></i> End Session
+                </a>
+                <a class="nav-link" href="{% url 'admin_ui:logout' %}">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Session Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h4 class="mb-0">
+                            <i class="fas fa-wifi"></i> Active Network Session
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>{{ network_session.course.code }} - {{ network_session.course.title }}</h5>
+                                <p class="mb-1">
+                                    <strong>Session:</strong> {{ network_session.session }} | {{ network_session.semester }}
+                                </p>
+                                <p class="mb-1">
+                                    <strong>Date:</strong> {{ network_session.date }}
+                                </p>
+                                <p class="mb-0">
+                                    <strong>Started:</strong> {{ network_session.start_time|time:"H:i" }}
+                                </p>
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                <div class="d-flex flex-column align-items-md-end">
+                                    <div class="h2 text-success mb-0">{{ present_count }}</div>
+                                    <small class="text-muted">Students Present</small>
+                                    <div class="mt-2">
+                                        <span class="badge bg-info">{{ total_enrolled }} Total Enrolled</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Connected Devices -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-mobile-alt"></i> Connected Devices
+                            <span class="badge bg-light text-dark ms-2">{{ connected_devices.count }}</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        {% if connected_devices %}
+                            <div class="list-group list-group-flush">
+                                {% for device in connected_devices %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="fw-bold">{{ device.device_name|default:"Unknown Device" }}</div>
+                                            <small class="text-muted">{{ device.mac_address }}</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="badge bg-success">Connected</div>
+                                            <div class="small text-muted">{{ device.connected_at|time:"H:i" }}</div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-mobile-alt fa-3x mb-3"></i>
+                                <p>No devices connected yet</p>
+                                <small>Students will appear here when they connect to ESP32 WiFi</small>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Records -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-check-circle"></i> Attendance Records
+                            <span class="badge bg-light text-dark ms-2">{{ attendance_records.count }}</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        {% if attendance_records %}
+                            <div class="list-group list-group-flush">
+                                {% for record in attendance_records %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="fw-bold">{{ record.student.name }}</div>
+                                            <small class="text-muted">{{ record.student.matric_no }}</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="badge bg-success">{{ record.status|title }}</div>
+                                            <div class="small text-muted">{{ record.marked_at|time:"H:i" }}</div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-check-circle fa-3x mb-3"></i>
+                                <p>No attendance marked yet</p>
+                                <small>Attendance records will appear here as students mark attendance</small>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ESP32 Status -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0">
+                            <i class="fas fa-microchip"></i> ESP32 Device Status
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="badge bg-success me-3">
+                                        <i class="fas fa-circle"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">Device Status</div>
+                                        <small class="text-muted">
+                                            {% if network_session.esp32_device %}
+                                                Connected: {{ network_session.esp32_device.device_name }}
+                                            {% else %}
+                                                Waiting for ESP32 connection...
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="badge bg-info me-3">
+                                        <i class="fas fa-wifi"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">WiFi Network</div>
+                                        <small class="text-muted">
+                                            {% if network_session.esp32_device %}
+                                                {{ network_session.esp32_device.ssid }}
+                                            {% else %}
+                                                Not available yet
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="badge bg-primary me-3">
+                                        <i class="fas fa-clock"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">Session Duration</div>
+                                        <small class="text-muted" id="session-duration">
+                                            Calculating...
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions for Students -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-info">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-info-circle"></i> Instructions for Students
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>📱 How to Mark Attendance:</h6>
+                                <ol class="mb-0">
+                                    <li>Connect to ESP32 WiFi network (no password)</li>
+                                    <li>Open browser and go to: <code>192.168.4.1</code></li>
+                                    <li>Enter your matric number and name</li>
+                                    <li>Click "Mark Attendance"</li>
+                                    <li>You'll see confirmation if successful</li>
+                                </ol>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>🔍 Troubleshooting:</h6>
+                                <ul class="mb-0">
+                                    <li>Make sure you're enrolled in this course</li>
+                                    <li>Check that your matric number is correct</li>
+                                    <li>Ensure you're connected to the right WiFi</li>
+                                    <li>Try refreshing the page if it doesn't work</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Calculate session duration
+        function updateSessionDuration() {
+            const startTime = new Date('{{ network_session.start_time|date:"Y-m-d H:i:s" }}');
+            const now = new Date();
+            const diff = now - startTime;
+            
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            
+            document.getElementById('session-duration').textContent = 
+                `${hours}h ${minutes}m`;
+        }
+        
+        // Update every minute
+        updateSessionDuration();
+        setInterval(updateSessionDuration, 60000);
+        
+        // Auto-refresh every 30 seconds for real-time updates
+        setTimeout(() => {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>
