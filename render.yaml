@@ -16,5 +16,9 @@ services:
         value: config.settings
       - key: ALLOWED_HOSTS
         value: ".onrender.com"
+      - key: DATABASE_URL
+        value: "postgresql://postgres:Oke389ony5131!!@db.bahlfrffhzuqujqcswne.supabase.co:5432/postgres"
+      - key: FORCE_SQLITE
+        value: "false"
     healthCheckPath: /
     autoDeploy: true
