@@ -2389,112 +2389,113 @@ def esp32_heartbeat_api(request):
 @csrf_exempt
 @require_http_methods(["GET"])
 def esp32_session_status_api(request):
-    """API endpoint for ESP32 to get current session status"""
+    """ESP32 API endpoint to get session status"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
     try:
-        # Verify device authentication
-        is_valid, device_or_error = verify_api_token(request)
-        if not is_valid:
-            return JsonResponse({'error': device_or_error}, status=401)
+        device_id = request.GET.get('device_id')
         
-        device = device_or_error
+        if not device_id:
+            return JsonResponse({'error': 'Missing device_id parameter'}, status=400)
         
-        # Get active session info
-        try:
-            network_session = NetworkSession.objects.get(
-                esp32_device=device,
-                is_active=True
-            )
-            
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if active_session:
             # Get connected devices count
-            connected_devices_count = ConnectedDevice.objects.filter(
-                network_session=network_session,
+            connected_count = ConnectedDevice.objects.filter(
+                network_session=active_session,
                 is_connected=True
             ).count()
             
-            # Get attendance count for today
-            today = timezone.now().date()
-            attendance_count = AttendanceRecord.objects.filter(
-                attendance_session__course=network_session.course,
-                attendance_session__date=today
-            ).count()
-            
             return JsonResponse({
                 'success': True,
-                'session': {
-                    'id': network_session.id,
-                    'course_code': network_session.course.code,
-                    'course_title': network_session.course.title,
-                    'lecturer': network_session.lecturer.username,
-                    'start_time': network_session.start_time.isoformat(),
-                    'connected_devices': connected_devices_count,
-                    'attendance_count': attendance_count
-                }
+                'session_active': True,
+                'course_code': active_session.course.code,
+                'course_title': active_session.course.title,
+                'lecturer': active_session.lecturer.username,
+                'start_time': active_session.start_time.isoformat(),
+                'connected_devices': connected_count,
+                'session_id': active_session.id
             })
-            
-        except NetworkSession.DoesNotExist:
+        else:
             return JsonResponse({
                 'success': True,
-                'session': None,
-                'message': 'No active session'
+                'session_active': False,
+                'message': 'No active session found'
             })
-            
+        
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def esp32_verify_student_api(request):
-    """API endpoint for ESP32 to verify student enrollment"""
+    """ESP32 API endpoint to verify student enrollment"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
     try:
-        # Verify device authentication
-        is_valid, device_or_error = verify_api_token(request)
-        if not is_valid:
-            return JsonResponse({'error': device_or_error}, status=401)
-        
-        device = device_or_error
-        
-        # Parse request data
         data = json.loads(request.body)
-        student_matric_no = data.get('student_matric_no')
+        matric_no = data.get('matric_no')
+        course_code = data.get('course_code')
         
-        if not student_matric_no:
-            return JsonResponse({'error': 'Student matric number is required'}, status=400)
+        if not matric_no or not course_code:
+            return JsonResponse({'error': 'Missing matric_no or course_code'}, status=400)
         
-        # Find active network session for this device
+        # Check if student exists
         try:
-            network_session = NetworkSession.objects.get(
-                esp32_device=device,
-                is_active=True
-            )
-        except NetworkSession.DoesNotExist:
-            return JsonResponse({'error': 'No active network session found'}, status=404)
+            student = Student.objects.get(matric_no=matric_no)
+        except Student.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Student not found',
+                'enrolled': False
+            })
         
-        # Verify student enrollment
+        # Check if course exists
         try:
-            student = Student.objects.get(matric_no=student_matric_no)
-            is_enrolled = CourseEnrollment.objects.filter(
-                student=student,
-                course=network_session.course,
-                session=network_session.session,
-                semester=network_session.semester
-            ).exists()
-            
+            course = Course.objects.get(code=course_code)
+        except Course.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Course not found',
+                'enrolled': False
+            })
+        
+        # Check if student is enrolled in this course
+        is_enrolled = CourseEnrollment.objects.filter(
+            student=student,
+            course=course,
+            session='2024/2025',
+            semester='1st Semester'
+        ).exists()
+        
+        if is_enrolled:
             return JsonResponse({
                 'success': True,
-                'student': {
-                    'matric_no': student.matric_no,
-                    'name': student.name,
-                    'department': student.department,
-                    'level': student.level,
-                    'is_enrolled': is_enrolled
-                }
+                'message': 'Student verified and enrolled',
+                'enrolled': True,
+                'student_name': student.name,
+                'matric_no': student.matric_no,
+                'course_code': course.code,
+                'course_title': course.title
             })
-            
-        except Student.DoesNotExist:
-            return JsonResponse({'error': 'Student not found'}, status=404)
-            
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': 'Student not enrolled in this course',
+                'enrolled': False,
+                'student_name': student.name,
+                'matric_no': student.matric_no
+            })
+        
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -2744,6 +2745,105 @@ def esp32_end_session_api(request):
             return JsonResponse({
                 'success': False,
                 'message': 'No active session found for this device'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_device_connected_api(request):
+    """ESP32 API endpoint for device connection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        ip_address = data.get('ip_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Create or update connected device record
+        connected_device, created = ConnectedDevice.objects.get_or_create(
+            network_session=active_session,
+            mac_address=mac_address,
+            defaults={
+                'ip_address': ip_address,
+                'is_connected': True
+            }
+        )
+        
+        if not created:
+            # Update existing record
+            connected_device.ip_address = ip_address
+            connected_device.is_connected = True
+            connected_device.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Device {mac_address} connected',
+            'device_id': connected_device.id
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
             })
         
     except Exception as e:
