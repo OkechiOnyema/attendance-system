@@ -8,6 +8,8 @@ from django.contrib.auth.models import User, Group
 from django.conf import settings
 from django.http import HttpResponseForbidden, JsonResponse
 from urllib.parse import unquote
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from .forms import (
     LecturerLoginForm,
     AdminCreationForm,
@@ -2706,3 +2708,43 @@ def verify_api_key(request):
     expected_key = get_or_create_api_key()
     
     return api_key == expected_key
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_end_session_api(request):
+    """ESP32 API endpoint to end a network session"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        
+        if not device_id:
+            return JsonResponse({'error': 'Missing device_id'}, status=400)
+        
+        # Find and end active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if active_session:
+            active_session.is_active = False
+            active_session.end_time = timezone.now()
+            active_session.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Session ended for {active_session.course.code}',
+                'session_id': active_session.id
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': 'No active session found for this device'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
