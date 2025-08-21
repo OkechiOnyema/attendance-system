@@ -1,228 +1,357 @@
 #!/usr/bin/env python3
 """
-ESP32 Test Client for Smart Attendance System
-This script simulates an ESP32 device to test the attendance API endpoints
+ESP32 Test Client for Django Attendance System
+
+This script simulates an ESP32 device communicating with the Django backend
+to test the attendance API endpoints.
+
+Usage:
+    python esp32_test_client.py --host your-domain.com --token your_device_token
+
+Author: Okechi Onyema
+Date: 2024
 """
 
 import requests
 import json
 import time
-from datetime import datetime
+import argparse
+import random
+from datetime import datetime, timedelta
 
-# Configuration
-BASE_URL = "http://127.0.0.1:8000/admin-panel"
-DEVICE_ID = "ESP32_TEST_001"
-
-def test_get_active_session():
-    """Test getting active session details"""
-    print("🔍 Testing: Get Active Session")
-    
-    url = f"{BASE_URL}/api/session/active/"
-    params = {"device_id": DEVICE_ID}
-    
-    try:
-        response = requests.get(url, params=params)
-        print(f"Status: {response.status_code}")
+class ESP32TestClient:
+    def __init__(self, host, token, use_https=True):
+        self.host = host
+        self.token = token
+        self.protocol = "https" if use_https else "http"
+        self.base_url = f"{self.protocol}://{host}"
+        self.headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        self.session_id = None
         
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('active'):
-                print("✅ Active session found!")
-                print(f"   Course: {data['course_code']} - {data['course_title']}")
-                print(f"   Lecturer: {data['lecturer_name']}")
-                print(f"   Date: {data['date']}")
-                print(f"   Enrolled Students: {data['total_enrolled']}")
-                print(f"   Current Attendance: {data['attendance_count']}")
-                return data
-            else:
-                print("❌ No active session found")
-                print(f"   Message: {data.get('message', 'Unknown')}")
-                return None
-        else:
-            print(f"❌ Error: {response.text}")
-            return None
+    def test_connection(self):
+        """Test basic connection to Django backend"""
+        try:
+            response = requests.get(f"{self.base_url}/", headers=self.headers, timeout=10)
+            print(f"✅ Connection test: {response.status_code}")
+            return True
+        except Exception as e:
+            print(f"❌ Connection failed: {e}")
+            return False
+    
+    def start_session(self, course_code="CS101", lecturer_username="lecturer1"):
+        """Start a network session"""
+        data = {
+            "course_code": course_code,
+            "lecturer_username": lecturer_username,
+            "session": "2024/2025",
+            "semester": "1st Semester"
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/start-session/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
             
-    except Exception as e:
-        print(f"❌ Exception: {e}")
-        return None
-
-def test_submit_attendance(session_data, matric_no):
-    """Test submitting attendance"""
-    print(f"\n📝 Testing: Submit Attendance for {matric_no}")
-    
-    url = f"{BASE_URL}/api/attendance/submit/"
-    
-    payload = {
-        "session_id": session_data['session_id'],
-        "student_matric_no": matric_no,
-        "device_id": DEVICE_ID,
-        "client_ip": "192.168.4.100",  # Simulate ESP32 network IP
-        "device_mac": "AA:BB:CC:DD:EE:FF",
-        "device_name": "Test Device"
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                print("✅ Attendance submitted successfully!")
-                print(f"   Student: {data['student_name']}")
-                print(f"   Course: {data['course_code']}")
-                print(f"   Timestamp: {data['timestamp']}")
+            if response.status_code == 200:
+                result = response.json()
+                self.session_id = result.get('session_id')
+                print(f"✅ Session started: {result.get('message')}")
                 return True
             else:
-                print(f"❌ Error: {data.get('error', 'Unknown error')}")
+                print(f"❌ Failed to start session: {response.status_code} - {response.text}")
                 return False
-        elif response.status_code == 403:
-            data = response.json()
-            print("✅ Correctly rejected: Device not connected to ESP32 network")
-            print(f"   Error: {data.get('error', 'Unknown')}")
-            return False
-        else:
-            print(f"❌ Error: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Exception: {e}")
-        return False
-
-def test_get_session_status():
-    """Test getting session status"""
-    print("\n📊 Testing: Get Session Status")
-    
-    url = f"{BASE_URL}/api/session/status/"
-    params = {"device_id": DEVICE_ID}
-    
-    try:
-        response = requests.get(url, params=params)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('active'):
-                print("✅ Session status retrieved!")
-                print(f"   Course: {data['course_code']} - {data['course_title']}")
-                print(f"   Statistics: {data['statistics']['present']}/{data['statistics']['total_enrolled']} present ({data['statistics']['percentage']}%)")
                 
-                if data.get('recent_attendance'):
-                    print("   Recent Attendance:")
-                    for record in data['recent_attendance'][:3]:  # Show first 3
-                        print(f"     {record['student_name']} ({record['matric_no']}) - {record['timestamp']}")
-                return data
-            else:
-                print("❌ No active session found")
-                return None
-        else:
-            print(f"❌ Error: {response.text}")
-            return None
-            
-    except Exception as e:
-        print(f"❌ Exception: {e}")
-        return None
-
-def test_duplicate_attendance(session_data, matric_no):
-    """Test submitting duplicate attendance (should fail)"""
-    print(f"\n🔄 Testing: Duplicate Attendance for {matric_no}")
+        except Exception as e:
+            print(f"❌ Error starting session: {e}")
+            return False
     
-    url = f"{BASE_URL}/api/attendance/submit/"
-    
-    payload = {
-        "session_id": session_data['session_id'],
-        "student_matric_no": matric_no,
-        "device_id": DEVICE_ID
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 400:
-            data = response.json()
-            if "already recorded" in data.get('error', ''):
-                print("✅ Correctly rejected duplicate attendance!")
-                return True
-            else:
-                print(f"❌ Unexpected error: {data.get('error', 'Unknown')}")
-                return False
-        else:
-            print(f"❌ Should have rejected duplicate, got status: {response.status_code}")
+    def end_session(self):
+        """End the current network session"""
+        if not self.session_id:
+            print("❌ No active session to end")
             return False
             
-    except Exception as e:
-        print(f"❌ Exception: {e}")
-        return False
-
-def test_invalid_student(session_data):
-    """Test submitting attendance for invalid student"""
-    print(f"\n👤 Testing: Invalid Student")
-    
-    url = f"{BASE_URL}/api/attendance/submit/"
-    
-    payload = {
-        "session_id": session_data['session_id'],
-        "student_matric_no": "INVALID123",
-        "device_id": DEVICE_ID
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        print(f"Status: {response.status_code}")
+        data = {"session_id": self.session_id}
         
-        if response.status_code == 404:
-            data = response.json()
-            if "not found" in data.get('error', ''):
-                print("✅ Correctly rejected invalid student!")
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/end-session/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Session ended: {result.get('message')}")
+                self.session_id = None
                 return True
             else:
-                print(f"❌ Unexpected error: {data.get('error', 'Unknown')}")
+                print(f"❌ Failed to end session: {response.status_code} - {response.text}")
                 return False
-        else:
-            print(f"❌ Should have rejected invalid student, got status: {response.status_code}")
+                
+        except Exception as e:
+            print(f"❌ Error ending session: {e}")
             return False
+    
+    def report_device_connected(self, mac_address, device_name="", ip_address=""):
+        """Report a student device connection"""
+        data = {
+            "mac_address": mac_address,
+            "device_name": device_name,
+            "ip_address": ip_address
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/device-connected/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
             
-    except Exception as e:
-        print(f"❌ Exception: {e}")
-        return False
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Device connected: {result.get('message')}")
+                return True
+            else:
+                print(f"❌ Failed to report device connection: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error reporting device connection: {e}")
+            return False
+    
+    def report_device_disconnected(self, mac_address):
+        """Report a student device disconnection"""
+        data = {"mac_address": mac_address}
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/device-disconnected/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Device disconnected: {result.get('message')}")
+                return True
+            else:
+                print(f"❌ Failed to report device disconnection: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error reporting device disconnection: {e}")
+            return False
+    
+    def record_attendance(self, student_matric_no, mac_address, status="present"):
+        """Record student attendance"""
+        data = {
+            "student_matric_no": student_matric_no,
+            "mac_address": mac_address,
+            "status": status
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/record-attendance/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Attendance recorded: {result.get('message')}")
+                return True
+            else:
+                print(f"❌ Failed to record attendance: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error recording attendance: {e}")
+            return False
+    
+    def verify_student(self, student_matric_no):
+        """Verify student enrollment"""
+        data = {"student_matric_no": student_matric_no}
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/verify-student/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                student = result.get('student', {})
+                print(f"✅ Student verified: {student.get('name')} - Enrolled: {student.get('is_enrolled')}")
+                return True
+            else:
+                print(f"❌ Failed to verify student: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error verifying student: {e}")
+            return False
+    
+    def get_session_status(self):
+        """Get current session status"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/api/esp32/session-status/",
+                headers=self.headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('session'):
+                    session = result['session']
+                    print(f"✅ Session active: {session.get('course_code')} - {session.get('course_title')}")
+                    print(f"   Lecturer: {session.get('lecturer')}")
+                    print(f"   Connected devices: {session.get('connected_devices')}")
+                    print(f"   Attendance count: {session.get('attendance_count')}")
+                else:
+                    print("ℹ️  No active session")
+                return True
+            else:
+                print(f"❌ Failed to get session status: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error getting session status: {e}")
+            return False
+    
+    def send_heartbeat(self):
+        """Send heartbeat to Django backend"""
+        data = {
+            "device_id": "ESP32_TEST_CLIENT",
+            "timestamp": int(time.time())
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/esp32/heartbeat/",
+                headers=self.headers,
+                json=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"💓 Heartbeat sent: {result.get('message')}")
+                return True
+            else:
+                print(f"❌ Failed to send heartbeat: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error sending heartbeat: {e}")
+            return False
+    
+    def simulate_class_session(self, duration_minutes=5):
+        """Simulate a complete class session"""
+        print(f"\n🎓 Simulating class session for {duration_minutes} minutes...")
+        
+        # Start session
+        if not self.start_session():
+            return False
+        
+        # Simulate students connecting
+        test_students = [
+            ("2021001", "AA:BB:CC:DD:EE:01"),
+            ("2021002", "AA:BB:CC:DD:EE:02"),
+            ("2021003", "AA:BB:CC:DD:EE:03"),
+            ("2021004", "AA:BB:CC:DD:EE:04"),
+            ("2021005", "AA:BB:CC:DD:EE:05")
+        ]
+        
+        print("\n📱 Simulating student connections...")
+        for matric_no, mac_address in test_students:
+            # Report device connection
+            self.report_device_connected(mac_address, f"Student_{matric_no}")
+            time.sleep(1)
+            
+            # Verify student
+            self.verify_student(matric_no)
+            time.sleep(1)
+            
+            # Record attendance
+            self.record_attendance(matric_no, mac_address)
+            time.sleep(1)
+        
+        # Send heartbeats during session
+        print("\n💓 Sending heartbeats during session...")
+        for i in range(duration_minutes):
+            self.send_heartbeat()
+            time.sleep(30)  # Wait 30 seconds between heartbeats
+        
+        # Check session status
+        print("\n📊 Checking session status...")
+        self.get_session_status()
+        
+        # End session
+        print("\n🔚 Ending session...")
+        self.end_session()
+        
+        print("\n✅ Class session simulation completed!")
+        return True
 
 def main():
-    """Main test function"""
-    print("🚀 ESP32 Smart Attendance System - Test Client")
+    parser = argparse.ArgumentParser(description="ESP32 Test Client for Django Attendance System")
+    parser.add_argument("--host", required=True, help="Django backend host (e.g., your-domain.com)")
+    parser.add_argument("--token", required=True, help="ESP32 device token")
+    parser.add_argument("--https", action="store_true", default=True, help="Use HTTPS (default: True)")
+    parser.add_argument("--test", choices=["connection", "session", "attendance", "full"], 
+                       default="full", help="Type of test to run")
+    
+    args = parser.parse_args()
+    
+    # Create test client
+    client = ESP32TestClient(args.host, args.token, args.https)
+    
+    print(f"🚀 ESP32 Test Client")
+    print(f"🌐 Backend: {args.host}")
+    print(f"🔐 Token: {args.token[:8]}...")
+    print(f"🔒 Protocol: {'HTTPS' if args.https else 'HTTP'}")
     print("=" * 50)
     
-    # Test 1: Get active session
-    session_data = test_get_active_session()
-    if not session_data:
-        print("\n❌ Cannot proceed without active session")
-        print("   Please start a network session first")
-        return
+    # Run tests based on selection
+    if args.test == "connection":
+        client.test_connection()
+        
+    elif args.test == "session":
+        client.start_session()
+        client.get_session_status()
+        client.end_session()
+        
+    elif args.test == "attendance":
+        client.start_session()
+        client.record_attendance("2021001", "AA:BB:CC:DD:EE:01")
+        client.get_session_status()
+        client.end_session()
+        
+    elif args.test == "full":
+        # Test connection first
+        if not client.test_connection():
+            print("❌ Cannot proceed without connection")
+            return
+        
+        # Run full simulation
+        client.simulate_class_session(duration_minutes=2)  # 2 minutes for testing
     
-    # Test 2: Submit attendance for valid students
-    test_students = ["STU001", "STU002", "STU003"]  # Replace with actual matric numbers
-    
-    for student in test_students:
-        success = test_submit_attendance(session_data, student)
-        if success:
-            time.sleep(1)  # Small delay between requests
-    
-    # Test 3: Get updated session status
-    test_get_session_status()
-    
-    # Test 4: Try duplicate attendance
-    if test_students:
-        test_duplicate_attendance(session_data, test_students[0])
-    
-    # Test 5: Try invalid student
-    test_invalid_student(session_data)
-    
-    print("\n" + "=" * 50)
-    print("🏁 Test completed!")
-    print("\nTo test with real students:")
-    print("1. Update test_students list with actual matric numbers")
-    print("2. Make sure you have an active network session")
-    print("3. Run this script again")
+    print("\n🏁 Test completed!")
 
 if __name__ == "__main__":
     main()

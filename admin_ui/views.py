@@ -696,7 +696,7 @@ def network_session_end(request, session_id):
 
 @csrf_exempt
 def api_device_heartbeat(request):
-    """ESP32 sends heartbeat to Django"""
+    """ESP32 sends heartbeat to Django and receives dynamic configuration"""
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -718,12 +718,64 @@ def api_device_heartbeat(request):
                 device.last_heartbeat = timezone.now()
                 device.save()
                 
-                return JsonResponse({
-                    'status': 'success',
-                    'message': 'Heartbeat received',
-                    'device_id': device_id,
-                    'created': created
-                })
+                # 🔌 DYNAMIC CONFIGURATION RESPONSE
+                # Check if this device has an active network session
+                active_session = NetworkSession.objects.filter(
+                    esp32_device=device,
+                    is_active=True
+                ).first()
+                
+                if active_session:
+                    # Device is in an active session - send configuration
+                    course = active_session.course
+                    session = active_session.session
+                    semester = active_session.semester
+                    
+                    # Generate dynamic configuration
+                    course_code = course.code
+                    session_id = f"{session}_{semester}".replace(" ", "_").replace("/", "_")
+                    
+                    # Dynamic device ID and SSID
+                    dynamic_device_id = f"ESP32_{course_code}_{session_id}"
+                    dynamic_ssid = f"{course_code}_Attendance_{session.replace('/', '_')}"
+                    
+                    # Update device with session-specific configuration
+                    device.device_name = f"{course_code} - {course.title}"
+                    device.ssid = dynamic_ssid
+                    device.password = ""  # Open network
+                    device.location = f"{course_code} Classroom - {session} {semester}"
+                    device.save()
+                    
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': 'Heartbeat received - Active session configuration applied',
+                        'device_id': device_id,
+                        'created': created,
+                        'configuration': {
+                            'active_session': True,
+                            'course_code': course_code,
+                            'course_title': course.title,
+                            'session': session,
+                            'semester': semester,
+                            'device_id': dynamic_device_id,
+                            'ssid': dynamic_ssid,
+                            'password': "",
+                            'lecturer': active_session.lecturer.username,
+                            'session_id': active_session.id
+                        }
+                    })
+                else:
+                    # No active session - device is idle
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': 'Heartbeat received - Device idle',
+                        'device_id': device_id,
+                        'created': created,
+                        'configuration': {
+                            'active_session': False,
+                            'message': 'No active session - device in standby mode'
+                        }
+                    })
             else:
                 return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
                 
@@ -1162,7 +1214,7 @@ def api_mark_attendance(request):
 
 @login_required
 def start_network_session_view(request):
-    """Start a new network attendance session"""
+    """Start a new network attendance session with automatic ESP32 configuration"""
     if request.method == 'POST':
         course_id = request.POST.get('course_id')
         session = request.POST.get('session')
@@ -1180,9 +1232,40 @@ def start_network_session_view(request):
                 messages.error(request, "❌ You are not assigned to this course for the specified session/semester.")
                 return redirect('admin_ui:dashboard')
             
-            # Create network session
+            # 🔌 AUTOMATIC ESP32 CONFIGURATION
+            # Find available ESP32 devices that are online (have recent heartbeat)
+            available_devices = ESP32Device.objects.filter(
+                is_active=True,
+                last_heartbeat__gte=timezone.now() - timedelta(minutes=5)  # Online in last 5 minutes
+            ).order_by('-last_heartbeat')
+            
+            if not available_devices.exists():
+                messages.error(request, "❌ No ESP32 devices are currently online. Please check device connectivity.")
+                return redirect('admin_ui:dashboard')
+            
+            # Select the most recently active ESP32 device
+            selected_device = available_devices.first()
+            
+            # Generate dynamic configuration for the ESP32
+            course_code = course.code
+            session_id = f"{session}_{semester}".replace(" ", "_").replace("/", "_")
+            
+            # Create dynamic device ID: ESP32_CS101_2024_2025_1st_Semester
+            dynamic_device_id = f"ESP32_{course_code}_{session_id}"
+            
+            # Create dynamic SSID: CS101_Attendance_2024_2025
+            dynamic_ssid = f"{course_code}_Attendance_{session.replace('/', '_')}"
+            
+            # Update ESP32 device with dynamic configuration
+            selected_device.device_name = f"{course_code} - {course.title}"
+            selected_device.ssid = dynamic_ssid
+            selected_device.password = ""  # Open network for easy student access
+            selected_device.location = f"{course_code} Classroom - {session} {semester}"
+            selected_device.save()
+            
+            # Create network session with the configured ESP32 device
             network_session = NetworkSession.objects.create(
-                esp32_device=None,  # Will be set when ESP32 connects
+                esp32_device=selected_device,  # Now automatically configured
                 course=course,
                 lecturer=request.user,
                 session=session,
@@ -1192,7 +1275,7 @@ def start_network_session_view(request):
                 is_active=True
             )
             
-            messages.success(request, f"✅ Network session started for {course.code}. Waiting for ESP32 device...")
+            messages.success(request, f"✅ Network session started for {course.code}! ESP32 '{selected_device.device_name}' configured and ready.")
             return redirect('admin_ui:network_session_active', session_id=network_session.id)
             
         except Course.DoesNotExist:
@@ -1202,10 +1285,26 @@ def start_network_session_view(request):
     
     # Get lecturer's assigned courses
     assigned_courses = AssignedCourse.objects.filter(lecturer=request.user)
+    
+    # Get available ESP32 devices for display
+    available_devices = ESP32Device.objects.filter(
+        is_active=True,
+        last_heartbeat__gte=timezone.now() - timedelta(minutes=5)
+    ).order_by('-last_heartbeat')
+    
     context = {
         'assigned_courses': assigned_courses,
         'current_session': "2024/2025",
-        'current_semester': "1st Semester"
+        'current_semester': "1st Semester",
+        'available_esp32_devices': available_devices,  # Show available devices
+        'esp32_status': {
+            'total_devices': ESP32Device.objects.filter(is_active=True).count(),
+            'online_devices': available_devices.count(),
+            'offline_devices': ESP32Device.objects.filter(
+                is_active=True,
+                last_heartbeat__lt=timezone.now() - timedelta(minutes=5)
+            ).count()
+        }
     }
     return render(request, 'admin_ui/start_network_session.html', context)
 
@@ -1497,3 +1596,1113 @@ def api_mark_attendance(request):
             })
     
     return JsonResponse({'success': False, 'message': 'Method not allowed'}, status=405)
+
+# ========================================
+# ESP32 ATTENDANCE SYSTEM IMPLEMENTATION
+# ========================================
+
+@login_required
+def start_esp32_session_view(request):
+    """Start an ESP32-based attendance session"""
+    try:
+        # Get lecturer's assigned courses
+        assigned_courses = AssignedCourse.objects.filter(lecturer=request.user)
+        
+        if request.method == 'POST':
+            course_id = request.POST.get('course_id')
+            session_name = request.POST.get('session_name')
+            semester = request.POST.get('semester')
+            
+            if course_id and session_name and semester:
+                course = Course.objects.get(id=course_id)
+                
+                # Create or get ESP32 device for this lecturer
+                esp32_device, created = ESP32Device.objects.get_or_create(
+                    assigned_lecturer=request.user,
+                    defaults={
+                        'device_id': f'ESP32_{request.user.username}_{course.code}',
+                        'device_name': f'{course.code}_Attendance_Device',
+                        'location': 'Classroom',
+                        'is_active': True
+                    }
+                )
+                
+                # Create network session
+                network_session = NetworkSession.objects.create(
+                    course=course,
+                    lecturer=request.user,
+                    session=session_name,
+                    semester=semester,
+                    date=timezone.now().date(),
+                    start_time=timezone.now(),
+                    is_active=True,
+                    esp32_device=esp32_device
+                )
+                
+                messages.success(request, f'ESP32 session started for {course.code}! Students can now connect to the ESP32 WiFi network.')
+                return redirect('admin_ui:esp32_session_active', session_id=network_session.id)
+        
+        context = {
+            'assigned_courses': assigned_courses,
+            'semesters': ['1st Semester', '2nd Semester', 'Summer'],
+            'current_session': f"{timezone.now().year}/{timezone.now().year + 1}"
+        }
+        return render(request, 'admin_ui/start_esp32_session.html', context)
+        
+    except Exception as e:
+        messages.error(request, f'Error starting ESP32 session: {str(e)}')
+        return redirect('admin_ui:dashboard')
+
+@login_required
+def esp32_session_active_view(request, session_id):
+    """Monitor active ESP32 attendance session"""
+    try:
+        network_session = NetworkSession.objects.get(
+            id=session_id,
+            lecturer=request.user,
+            is_active=True
+        )
+        
+        # Get attendance records for this session
+        attendance_records = AttendanceRecord.objects.filter(
+            attendance_session__course=network_session.course,
+            attendance_session__date=network_session.date,
+            network_verified=True
+        ).select_related('student', 'attendance_session')
+        
+        # Get connected devices count
+        connected_devices = ConnectedDevice.objects.filter(
+            esp32_device=network_session.esp32_device,
+            is_connected=True
+        ).count()
+        
+        context = {
+            'network_session': network_session,
+            'attendance_records': attendance_records,
+            'connected_devices': connected_devices,
+            'total_students': network_session.course.students.count(),
+            'present_count': attendance_records.count(),
+            'absent_count': network_session.course.students.count() - attendance_records.count()
+        }
+        return render(request, 'admin_ui/esp32_session_active.html', context)
+        
+    except NetworkSession.DoesNotExist:
+        messages.error(request, 'Session not found or not active.')
+        return redirect('admin_ui:dashboard')
+
+@login_required
+def end_esp32_session_view(request, session_id):
+    """End ESP32 attendance session"""
+    try:
+        network_session = NetworkSession.objects.get(
+            id=session_id,
+            lecturer=request.user,
+            is_active=True
+        )
+        
+        if request.method == 'POST':
+            # End the session
+            network_session.is_active = False
+            network_session.end_time = timezone.now()
+            network_session.save()
+            
+            # Deactivate ESP32 device
+            if network_session.esp32_device:
+                network_session.esp32_device.is_active = False
+                network_session.esp32_device.save()
+            
+            messages.success(request, f'ESP32 session ended for {network_session.course.code}.')
+            return redirect('admin_ui:dashboard')
+        
+        context = {'network_session': network_session}
+        return render(request, 'admin_ui/end_esp32_session.html', context)
+        
+    except NetworkSession.DoesNotExist:
+        messages.error(request, 'Session not found.')
+        return redirect('admin_ui:dashboard')
+
+@login_required
+def esp32_device_management_view(request):
+    """Manage ESP32 devices"""
+    try:
+        # Get lecturer's ESP32 devices
+        esp32_devices = ESP32Device.objects.filter(assigned_lecturer=request.user)
+        
+        if request.method == 'POST':
+            action = request.POST.get('action')
+            device_id = request.POST.get('device_id')
+            
+            if action == 'activate' and device_id:
+                device = ESP32Device.objects.get(id=device_id, assigned_lecturer=request.user)
+                device.is_active = True
+                device.save()
+                messages.success(request, f'Device {device.device_name} activated.')
+            elif action == 'deactivate' and device_id:
+                device = ESP32Device.objects.get(id=device_id, assigned_lecturer=request.user)
+                device.is_active = False
+                device.save()
+                messages.success(request, f'Device {device.device_name} deactivated.')
+        
+        context = {'esp32_devices': esp32_devices}
+        return render(request, 'admin_ui/esp32_device_management.html', context)
+        
+    except Exception as e:
+        messages.error(request, f'Error managing ESP32 devices: {str(e)}')
+        return redirect('admin_ui:dashboard')
+
+# ========================================
+# ESP32 API ENDPOINTS
+# ========================================
+
+def esp32_heartbeat_api(request):
+    """ESP32 heartbeat to check server connectivity and get dynamic configuration"""
+    if request.method == 'POST':
+        device_id = request.POST.get('device_id')
+        wifi_ssid = request.POST.get('wifi_ssid')
+        connected_students = request.POST.get('connected_students', 0)
+        
+        try:
+            device = ESP32Device.objects.get(device_id=device_id)
+            device.last_heartbeat = timezone.now()
+            device.connected_wifi = wifi_ssid
+            device.connected_students_count = int(connected_students)
+            device.save()
+            
+            # Check for active session and send dynamic configuration
+            active_session = NetworkSession.objects.filter(
+                esp32_device=device,
+                is_active=True,
+                date=timezone.now().date()
+            ).first()
+            
+            if active_session:
+                # Send dynamic configuration with lecturer's WiFi credentials
+                return JsonResponse({
+                    'status': 'ok',
+                    'message': 'Heartbeat received - Active session found',
+                    'server_time': timezone.now().isoformat(),
+                    'active_session': True,
+                    'config': {
+                        'device_id': device.device_id,
+                        'device_name': device.device_name,
+                        'ssid': device.ssid,
+                        'password': device.password,
+                        'location': device.location,
+                        'course': active_session.course.code,
+                        'lecturer': active_session.lecturer.username,
+                        'session_id': active_session.id,
+                        'start_time': active_session.start_time.isoformat(),
+                        'lecturer_ssid': request.POST.get('lecturer_wifi_ssid', ''),
+                        'lecturer_password': request.POST.get('lecturer_wifi_password', '')
+                    }
+                })
+            else:
+                # No active session - standby mode
+                return JsonResponse({
+                    'status': 'ok',
+                    'message': 'Heartbeat received - No active session',
+                    'server_time': timezone.now().isoformat(),
+                    'active_session': False,
+                    'config': {
+                        'device_id': device.device_id,
+                        'device_name': device.device_name,
+                        'ssid': 'Attendance_Standby',
+                        'password': '12345678',
+                        'location': 'Standby Mode'
+                    }
+                })
+                
+        except ESP32Device.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Device not registered'
+            }, status=404)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def esp32_check_session_api(request):
+    """ESP32 checks for active session"""
+    if request.method == 'POST':
+        device_id = request.POST.get('device_id')
+        
+        try:
+            device = ESP32Device.objects.get(device_id=device_id)
+            
+            # Check for active session
+            active_session = NetworkSession.objects.filter(
+                esp32_device=device,
+                is_active=True,
+                date=timezone.now().date()
+            ).first()
+            
+            if active_session:
+                return JsonResponse({
+                    'status': 'ok',
+                    'has_session': True,
+                    'session_data': {
+                        'course_code': active_session.course.code,
+                        'course_name': active_session.course.name,
+                        'lecturer': active_session.lecturer.get_full_name(),
+                        'session': active_session.session,
+                        'semester': active_session.semester,
+                        'start_time': active_session.start_time.isoformat()
+                    }
+                })
+            else:
+                return JsonResponse({
+                    'status': 'ok',
+                    'has_session': False,
+                    'message': 'No active session'
+                })
+                
+        except ESP32Device.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Device not registered'
+            }, status=404)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def esp32_mark_attendance_api(request):
+    """ESP32 submits student attendance"""
+    if request.method == 'POST':
+        matric_no = request.POST.get('matric_no')
+        student_name = request.POST.get('student_name')
+        device_id = request.POST.get('device_id')
+        
+        try:
+            # Find student by matric number or name
+            student = Student.objects.filter(
+                matric_no=matric_no
+            ).first() or Student.objects.filter(
+                name__icontains=student_name
+            ).first()
+            
+            if not student:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Student not found. Please check your details.'
+                })
+            
+            device = ESP32Device.objects.get(device_id=device_id)
+            
+            # Find active network session for this device
+            network_session = NetworkSession.objects.filter(
+                esp32_device=device,
+                is_active=True,
+                date=timezone.now().date()
+            ).first()
+            
+            if not network_session:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'No active session found. Please contact your lecturer.'
+                })
+            
+            # Check if student is enrolled in the course
+            if not CourseEnrollment.objects.filter(
+                student=student,
+                course=network_session.course,
+                session=network_session.session,
+                semester=network_session.semester
+            ).exists():
+                return JsonResponse({
+                    'success': False,
+                    'message': f'You are not enrolled in {network_session.course.code}.'
+                })
+            
+            # Check if attendance already marked
+            existing_record = AttendanceRecord.objects.filter(
+                student=student,
+                attendance_session__course=network_session.course,
+                attendance_session__date=network_session.date
+            ).first()
+            
+            if existing_record:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Attendance already marked for today.'
+                })
+            
+            # Create attendance session if not exists
+            attendance_session, created = AttendanceSession.objects.get_or_create(
+                course=network_session.course,
+                lecturer=network_session.lecturer,
+                session=network_session.session,
+                semester=network_session.semester,
+                date=network_session.date,
+                defaults={'start_time': network_session.start_time}
+            )
+            
+            # Mark attendance
+            attendance_record = AttendanceRecord.objects.create(
+                attendance_session=attendance_session,
+                student=student,
+                status='present',
+                network_verified=True,
+                esp32_device=device,
+                timestamp=timezone.now()
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Attendance marked successfully for {student.name}!',
+                'student_name': student.name,
+                'course': network_session.course.code,
+                'timestamp': attendance_record.timestamp.isoformat()
+            })
+                
+        except ESP32Device.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not registered'
+            }, status=404)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': f'Error marking attendance: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({'success': False, 'message': 'Method not allowed'}, status=405)
+
+def esp32_register_device_api(request):
+    """Register new ESP32 device"""
+    if request.method == 'POST':
+        device_id = request.POST.get('device_id')
+        device_name = request.POST.get('device_name')
+        lecturer_username = request.POST.get('lecturer_username')
+        
+        try:
+            lecturer = User.objects.get(username=lecturer_username)
+            
+            # Check if lecturer is assigned to any courses
+            if not AssignedCourse.objects.filter(lecturer=lecturer).exists():
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Lecturer not assigned to any courses'
+                }, status=400)
+            
+            # Create or update device
+            device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': device_name,
+                    'assigned_lecturer': lecturer,
+                    'is_active': True,
+                    'last_heartbeat': timezone.now()
+                }
+            )
+            
+            if not created:
+                device.device_name = device_name
+                device.assigned_lecturer = lecturer
+                device.is_active = True
+                device.save()
+            
+            return JsonResponse({
+                'status': 'ok',
+                'message': 'Device registered successfully',
+                'device_id': device.device_id,
+                'assigned_lecturer': lecturer.username
+            })
+            
+        except User.DoesNotExist:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Lecturer not found'
+            }, status=404)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def dynamic_esp32_session_view(request):
+    """Dynamic ESP32 session management - creates sessions with real-time ESP32 configuration"""
+    if not request.user.is_authenticated:
+        return redirect('admin_ui:lecturer_login')
+    
+    # Get lecturer's assigned courses
+    assigned_courses = AssignedCourse.objects.filter(lecturer=request.user)
+    
+    if request.method == 'POST':
+        course_id = request.POST.get('course')
+        session = request.POST.get('session')
+        semester = request.POST.get('semester')
+        start_time = request.POST.get('start_time')
+        
+        if course_id and session and semester and start_time:
+            course = get_object_or_404(Course, id=course_id)
+            
+            # Find available ESP32 device (online within last 5 minutes)
+            five_minutes_ago = timezone.now() - timedelta(minutes=5)
+            available_device = ESP32Device.objects.filter(
+                is_active=True,
+                last_heartbeat__gte=five_minutes_ago
+            ).first()
+            
+            if available_device:
+                # Generate dynamic configuration
+                device_id = f"ESP32_{course.code}_{timezone.now().strftime('%Y%m%d_%H%M')}"
+                ssid = f"Attendance_{course.code}_{request.user.username}_{timezone.now().strftime('%H%M')}"
+                device_name = f"{course.code}_{request.user.username}_{timezone.now().strftime('%H%M')}"
+                location = f"{course.title} - {request.user.get_full_name() or request.user.username}"
+                
+                # Update ESP32 device with dynamic config
+                available_device.device_id = device_id
+                available_device.device_name = device_name
+                available_device.ssid = ssid
+                available_device.password = "12345678"  # Default password
+                available_device.location = location
+                available_device.save()
+                
+                # Create network session
+                start_datetime = datetime.strptime(f"{timezone.now().date()} {start_time}", "%Y-%m-%d %H:%M")
+                start_datetime = timezone.make_aware(start_datetime)
+                
+                network_session = NetworkSession.objects.create(
+                    esp32_device=available_device,
+                    course=course,
+                    lecturer=request.user,
+                    session=session,
+                    semester=semester,
+                    date=timezone.now().date(),
+                    start_time=start_datetime,
+                    is_active=True
+                )
+                
+                messages.success(request, f'✅ Dynamic ESP32 session created! WiFi: {ssid}')
+                return redirect('admin_ui:esp32_session_active', session_id=network_session.id)
+            else:
+                messages.error(request, '❌ No available ESP32 devices. Please check device status.')
+    
+    # Get ESP32 device status
+    total_devices = ESP32Device.objects.filter(is_active=True).count()
+    online_devices = ESP32Device.objects.filter(
+        is_active=True,
+        last_heartbeat__gte=timezone.now() - timedelta(minutes=5)
+    ).count()
+    offline_devices = total_devices - online_devices
+    
+    # Get available devices
+    available_devices = ESP32Device.objects.filter(
+        is_active=True,
+        last_heartbeat__gte=timezone.now() - timedelta(minutes=5)
+    ).order_by('-last_heartbeat')
+    
+    context = {
+        'assigned_courses': assigned_courses,
+        'total_devices': total_devices,
+        'online_devices': online_devices,
+        'offline_devices': offline_devices,
+        'available_devices': available_devices,
+    }
+    
+    return render(request, 'admin_ui/dynamic_esp32_session.html', context)
+
+def correct_esp32_session_view(request):
+    """Correct ESP32 flow: Lecturer provides WiFi credentials for ESP32 internet access"""
+    if not request.user.is_authenticated:
+        return redirect('admin_ui:lecturer_login')
+    
+    # Get lecturer's assigned courses
+    assigned_courses = AssignedCourse.objects.filter(lecturer=request.user)
+    
+    if request.method == 'POST':
+        course_id = request.POST.get('course')
+        session = request.POST.get('session')
+        semester = request.POST.get('semester')
+        start_time = request.POST.get('start_time')
+        lecturer_wifi_ssid = request.POST.get('lecturer_wifi_ssid')
+        lecturer_wifi_password = request.POST.get('lecturer_wifi_password')
+        
+        if course_id and session and semester and start_time and lecturer_wifi_ssid:
+            course = get_object_or_404(Course, id=course_id)
+            
+            # Find available ESP32 device (online within last 5 minutes)
+            five_minutes_ago = timezone.now() - timedelta(minutes=5)
+            available_device = ESP32Device.objects.filter(
+                is_active=True,
+                last_heartbeat__gte=five_minutes_ago
+            ).first()
+            
+            if available_device:
+                # Generate dynamic configuration
+                device_id = f"ESP32_{course.code}_{timezone.now().strftime('%Y%m%d_%H%M')}"
+                ssid = f"Attendance_{course.code}_{request.user.username}_{timezone.now().strftime('%H%M')}"
+                device_name = f"{course.code}_{request.user.username}_{timezone.now().strftime('%H%M')}"
+                location = f"{course.title} - {request.user.get_full_name() or request.user.username}"
+                
+                # Update ESP32 device with dynamic config
+                available_device.device_id = device_id
+                available_device.device_name = device_name
+                available_device.ssid = ssid
+                available_device.password = "12345678"  # Student WiFi password
+                available_device.location = location
+                available_device.save()
+                
+                # Create network session
+                start_datetime = datetime.strptime(f"{timezone.now().date()} {start_time}", "%Y-%m-%d %H:%M")
+                start_datetime = timezone.make_aware(start_datetime)
+                
+                network_session = NetworkSession.objects.create(
+                    esp32_device=available_device,
+                    course=course,
+                    lecturer=request.user,
+                    session=session,
+                    semester=semester,
+                    date=timezone.now().date(),
+                    start_time=start_datetime,
+                    is_active=True
+                )
+                
+                messages.success(request, f'✅ ESP32 session created! Students connect to WiFi: {ssid}')
+                return redirect('admin_ui:esp32_session_active', session_id=network_session.id)
+            else:
+                messages.error(request, '❌ No available ESP32 devices. Please check device status.')
+    
+    # Get ESP32 device status
+    total_devices = ESP32Device.objects.filter(is_active=True).count()
+    online_devices = ESP32Device.objects.filter(
+        is_active=True,
+        last_heartbeat__gte=timezone.now() - timedelta(minutes=5)
+    ).count()
+    offline_devices = total_devices - online_devices
+    
+    # Get available devices
+    available_devices = ESP32Device.objects.filter(
+        is_active=True,
+        last_heartbeat__gte=timezone.now() - timedelta(minutes=5)
+    ).order_by('-last_heartbeat')
+    
+    context = {
+        'assigned_courses': assigned_courses,
+        'total_devices': total_devices,
+        'online_devices': online_devices,
+        'offline_devices': offline_devices,
+        'available_devices': available_devices,
+    }
+    
+    return render(request, 'admin_ui/correct_esp32_session.html', context)
+
+# 🔐 SECURE ATTENDANCE API ENDPOINTS FOR ESP32
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+import json
+import hashlib
+import hmac
+import time
+from django.core.exceptions import ValidationError
+from django.db import transaction
+
+# API Authentication and Security
+def verify_api_token(request):
+    """Verify the API token for secure ESP32 communication"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return False, "Missing or invalid authorization header"
+    
+    token = auth_header.split(' ')[1]
+    
+    # Check if token exists in ESP32Device
+    try:
+        device = ESP32Device.objects.get(device_id=token, is_active=True)
+        return True, device
+    except ESP32Device.DoesNotExist:
+        return False, "Invalid or inactive device token"
+    
+    return False, "Invalid token"
+
+def verify_request_signature(request, secret_key):
+    """Verify request signature for additional security"""
+    signature = request.headers.get('X-Signature')
+    timestamp = request.headers.get('X-Timestamp')
+    
+    if not signature or not timestamp:
+        return False, "Missing signature or timestamp"
+    
+    # Check if timestamp is recent (within 5 minutes)
+    current_time = int(time.time())
+    if abs(current_time - int(timestamp)) > 300:  # 5 minutes
+        return False, "Request timestamp expired"
+    
+    # Verify signature
+    expected_signature = hmac.new(
+        secret_key.encode(),
+        f"{timestamp}{request.body.decode()}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(signature, expected_signature), "Signature verified"
+
+# 📡 ESP32 Session Management API
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_start_session_api(request):
+    """ESP32 API endpoint to start a network session"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        course_code = data.get('course_code')
+        
+        if not device_id or not course_code:
+            return JsonResponse({'error': 'Missing device_id or course_code'}, status=400)
+        
+        # Get or create ESP32 device
+        esp32_device, created = ESP32Device.objects.get_or_create(
+            device_id=device_id,
+            defaults={
+                'device_name': f"{course_code} Classroom ESP32",
+                'ssid': f"{course_code}_Attendance",
+                'password': 'attendance123',
+                'location': f"Classroom {course_code}",
+                'is_active': True
+            }
+        )
+        
+        # End any existing active sessions for this device
+        NetworkSession.objects.filter(
+            esp32_device=esp32_device,
+            is_active=True
+        ).update(is_active=False, end_time=timezone.now())
+        
+        # Create new network session
+        network_session = NetworkSession.objects.create(
+            esp32_device=esp32_device,
+            course=Course.objects.get(code=course_code),
+            lecturer=User.objects.get(username='lecturer1'),  # Default lecturer
+            session='2024/2025',
+            semester='1st Semester',
+            date=timezone.now().date(),
+            start_time=timezone.now(),
+            is_active=True
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'session_id': network_session.id,
+            'message': f'Session started for {course_code}'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_record_attendance_api(request):
+    """ESP32 API endpoint to record attendance"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        matric_no = data.get('matric_no')
+        student_name = data.get('student_name')
+        course_code = data.get('course_code')
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not all([matric_no, student_name, course_code, device_id]):
+            return JsonResponse({'error': 'Missing required fields'}, status=400)
+        
+        # Get course and student
+        try:
+            course = Course.objects.get(code=course_code)
+            student = Student.objects.get(matric_no=matric_no)
+        except (Course.DoesNotExist, Student.DoesNotExist):
+            return JsonResponse({'error': 'Course or student not found'}, status=400)
+        
+        # Check if student is enrolled in this course
+        if not CourseEnrollment.objects.filter(
+            student=student,
+            course=course,
+            session='2024/2025',
+            semester='1st Semester'
+        ).exists():
+            return JsonResponse({'error': 'Student not enrolled in this course'}, status=400)
+        
+        # Check if attendance already marked today
+        today = timezone.now().date()
+        if AttendanceRecord.objects.filter(
+            student=student,
+            attendance_session__course=course,
+            attendance_session__date=today
+        ).exists():
+            return JsonResponse({'error': 'Attendance already marked today'}, status=400)
+        
+        # Create attendance session if not exists
+        attendance_session, created = AttendanceSession.objects.get_or_create(
+            course=course,
+            date=today,
+            session='2024/2025',
+            semester='1st Semester',
+            defaults={'lecturer': User.objects.get(username='lecturer1')}
+        )
+        
+        # Record attendance
+        attendance_record = AttendanceRecord.objects.create(
+            student=student,
+            attendance_session=attendance_session,
+            status='present',
+            marked_at=timezone.now(),
+            device_mac=mac_address or 'Unknown'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Attendance recorded for {student_name}',
+            'attendance_id': attendance_record.id
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_heartbeat_api(request):
+    """ESP32 API endpoint for heartbeat"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        
+        if not device_id:
+            return JsonResponse({'error': 'Missing device_id'}, status=400)
+        
+        # Update device heartbeat
+        ESP32Device.objects.filter(device_id=device_id).update(
+            last_heartbeat=timezone.now()
+        )
+        
+        return JsonResponse({'success': True, 'message': 'Heartbeat received'})
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def esp32_session_status_api(request):
+    """API endpoint for ESP32 to get current session status"""
+    try:
+        # Verify device authentication
+        is_valid, device_or_error = verify_api_token(request)
+        if not is_valid:
+            return JsonResponse({'error': device_or_error}, status=401)
+        
+        device = device_or_error
+        
+        # Get active session info
+        try:
+            network_session = NetworkSession.objects.get(
+                esp32_device=device,
+                is_active=True
+            )
+            
+            # Get connected devices count
+            connected_devices_count = ConnectedDevice.objects.filter(
+                network_session=network_session,
+                is_connected=True
+            ).count()
+            
+            # Get attendance count for today
+            today = timezone.now().date()
+            attendance_count = AttendanceRecord.objects.filter(
+                attendance_session__course=network_session.course,
+                attendance_session__date=today
+            ).count()
+            
+            return JsonResponse({
+                'success': True,
+                'session': {
+                    'id': network_session.id,
+                    'course_code': network_session.course.code,
+                    'course_title': network_session.course.title,
+                    'lecturer': network_session.lecturer.username,
+                    'start_time': network_session.start_time.isoformat(),
+                    'connected_devices': connected_devices_count,
+                    'attendance_count': attendance_count
+                }
+            })
+            
+        except NetworkSession.DoesNotExist:
+            return JsonResponse({
+                'success': True,
+                'session': None,
+                'message': 'No active session'
+            })
+            
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_verify_student_api(request):
+    """API endpoint for ESP32 to verify student enrollment"""
+    try:
+        # Verify device authentication
+        is_valid, device_or_error = verify_api_token(request)
+        if not is_valid:
+            return JsonResponse({'error': device_or_error}, status=401)
+        
+        device = device_or_error
+        
+        # Parse request data
+        data = json.loads(request.body)
+        student_matric_no = data.get('student_matric_no')
+        
+        if not student_matric_no:
+            return JsonResponse({'error': 'Student matric number is required'}, status=400)
+        
+        # Find active network session for this device
+        try:
+            network_session = NetworkSession.objects.get(
+                esp32_device=device,
+                is_active=True
+            )
+        except NetworkSession.DoesNotExist:
+            return JsonResponse({'error': 'No active network session found'}, status=404)
+        
+        # Verify student enrollment
+        try:
+            student = Student.objects.get(matric_no=student_matric_no)
+            is_enrolled = CourseEnrollment.objects.filter(
+                student=student,
+                course=network_session.course,
+                session=network_session.session,
+                semester=network_session.semester
+            ).exists()
+            
+            return JsonResponse({
+                'success': True,
+                'student': {
+                    'matric_no': student.matric_no,
+                    'name': student.name,
+                    'department': student.department,
+                    'level': student.level,
+                    'is_enrolled': is_enrolled
+                }
+            })
+            
+        except Student.DoesNotExist:
+            return JsonResponse({'error': 'Student not found'}, status=404)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# 🔧 ESP32 Setup and Management Views
+def esp32_setup_view(request):
+    """ESP32 WiFi setup and configuration for lecturers"""
+    if not request.user.is_authenticated:
+        return redirect('admin_ui:lecturer_login')
+    
+    # Check if user is a lecturer
+    if not AssignedCourse.objects.filter(lecturer=request.user).exists():
+        messages.error(request, "❌ Access denied. You are not assigned to any courses.")
+        return redirect('admin_ui:lecturer_login')
+    
+    # Get lecturer's assigned courses
+    assigned_courses = AssignedCourse.objects.filter(lecturer=request.user)
+    
+    # Check if ESP32 is already configured
+    esp32_status = check_esp32_status(request.user)
+    
+    # Get or generate API key
+    api_key = get_or_create_api_key()
+    
+    context = {
+        'lecturer': request.user,
+        'assigned_courses': assigned_courses,
+        'esp32_status': esp32_status,
+        'esp32_ip': '192.168.4.1',  # ESP32 default IP
+        'setup_ssid': 'ESP32_Setup',
+        'setup_password': 'setup123',
+        'api_key': api_key,  # Add API key to context
+    }
+    
+    return render(request, 'admin_ui/esp32_setup.html', context)
+
+def check_esp32_status(lecturer):
+    """Check ESP32 connection status for lecturer"""
+    try:
+        # Check if there's an active ESP32 session for this lecturer
+        active_session = NetworkSession.objects.filter(
+            lecturer=lecturer,
+            is_active=True
+        ).first()
+        
+        if active_session:
+            return {
+                'connected': True,
+                'device_name': active_session.esp32_device.device_name,
+                'course': active_session.course.code,
+                'session_id': active_session.id,
+                'connected_devices': active_session.connecteddevice_set.filter(is_connected=True).count()
+            }
+        else:
+            return {
+                'connected': False,
+                'message': 'No active ESP32 session'
+            }
+    except Exception as e:
+        return {
+            'connected': False,
+            'message': f'Error checking status: {str(e)}'
+        }
+
+def esp32_start_session_view(request):
+    """Start ESP32 attendance session"""
+    if request.method == 'POST':
+        course_id = request.POST.get('course_id')
+        session = request.POST.get('session', '2024/2025')
+        semester = request.POST.get('semester', '1st Semester')
+        
+        try:
+            course = Course.objects.get(id=course_id)
+            
+            # Check if lecturer is assigned to this course
+            if not AssignedCourse.objects.filter(
+                lecturer=request.user,
+                course=course,
+                session=session,
+                semester=semester
+            ).exists():
+                messages.error(request, "❌ You are not assigned to this course.")
+                return redirect('admin_ui:esp32_setup')
+            
+            # Create or get ESP32 device for this location
+            device_location = f"Classroom {course.code}"
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=f"ESP32_{course.code}_001",
+                defaults={
+                    'device_name': f"{course.code} Classroom ESP32",
+                    'ssid': f"{course.code}_Attendance",
+                    'password': 'attendance123',
+                    'location': device_location,
+                    'is_active': True
+                }
+            )
+            
+            # End any existing active sessions for this device
+            NetworkSession.objects.filter(
+                esp32_device=esp32_device,
+                is_active=True
+            ).update(is_active=False, end_time=timezone.now())
+            
+            # Create new network session
+            network_session = NetworkSession.objects.create(
+                esp32_device=esp32_device,
+                course=course,
+                lecturer=request.user,
+                session=session,
+                semester=semester,
+                date=timezone.now().date(),
+                start_time=timezone.now(),
+                is_active=True
+            )
+            
+            messages.success(request, f"✅ ESP32 session started for {course.code}!")
+            return redirect('admin_ui:esp32_session_active', session_id=network_session.id)
+            
+        except Course.DoesNotExist:
+            messages.error(request, "❌ Course not found.")
+        except Exception as e:
+            messages.error(request, f"❌ Error starting session: {str(e)}")
+    
+    return redirect('admin_ui:esp32_setup')
+
+def esp32_session_active_view(request, session_id):
+    """Active ESP32 session monitoring"""
+    try:
+        network_session = NetworkSession.objects.get(
+            id=session_id,
+            lecturer=request.user,
+            is_active=True
+        )
+        
+        # Get connected devices
+        connected_devices = ConnectedDevice.objects.filter(
+            network_session=network_session,
+            is_connected=True
+        )
+        
+        # Get attendance records for today
+        today = timezone.now().date()
+        attendance_records = AttendanceRecord.objects.filter(
+            attendance_session__course=network_session.course,
+            attendance_session__date=today
+        )
+        
+        context = {
+            'session': network_session,
+            'connected_devices': connected_devices,
+            'attendance_records': attendance_records,
+            'total_enrolled': CourseEnrollment.objects.filter(
+                course=network_session.course,
+                session=network_session.session,
+                semester=network_session.semester
+            ).count()
+        }
+        
+        return render(request, 'admin_ui/esp32_session_active.html', context)
+        
+    except NetworkSession.DoesNotExist:
+        messages.error(request, "❌ Session not found or not active.")
+        return redirect('admin_ui:esp32_setup')
+
+def esp32_end_session_view(request, session_id):
+    """End ESP32 attendance session"""
+    try:
+        network_session = NetworkSession.objects.get(
+            id=session_id,
+            lecturer=request.user,
+            is_active=True
+        )
+        
+        # End the session
+        network_session.is_active = False
+        network_session.end_time = timezone.now()
+        network_session.save()
+        
+        messages.success(request, f"✅ ESP32 session ended for {network_session.course.code}")
+        return redirect('admin_ui:esp32_setup')
+        
+    except NetworkSession.DoesNotExist:
+        messages.error(request, "❌ Session not found.")
+    
+    return redirect('admin_ui:esp32_setup')
+
+# 🔑 API Key Management for ESP32
+def generate_api_key():
+    """Generate a simple API key for ESP32 devices"""
+    import secrets
+    return secrets.token_hex(16)  # 32 character hex string
+
+def get_or_create_api_key():
+    """Get existing API key or create new one"""
+    from django.core.cache import cache
+    
+    api_key = cache.get('esp32_api_key')
+    if not api_key:
+        api_key = generate_api_key()
+        cache.set('esp32_api_key', api_key, timeout=31536000)  # 1 year
+    
+    return api_key
+
+def verify_api_key(request):
+    """Verify API key from ESP32 requests"""
+    auth_header = request.headers.get('Authorization', '')
+    
+    if not auth_header.startswith('Bearer '):
+        return False
+    
+    api_key = auth_header.split(' ')[1]
+    expected_key = get_or_create_api_key()
+    
+    return api_key == expected_key

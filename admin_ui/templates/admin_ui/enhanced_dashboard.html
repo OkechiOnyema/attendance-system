@@ -175,6 +175,49 @@
         </div>
     </div>
     
+    <!-- ESP32 Smart Attendance Section -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5>🚀 ESP32 Smart Attendance System</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6>🎯 Correct ESP32 Flow - Lecturer WiFi Setup</h6>
+                            <p class="text-muted">ESP32 creates WiFi for students but gets internet from your device's WiFi hotspot.</p>
+                            
+                            <div class="alert alert-info">
+                                <strong>✨ How It Works:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li><strong>You create WiFi hotspot</strong> on your phone/laptop</li>
+                                    <li><strong>ESP32 connects to your WiFi</strong> to get internet access</li>
+                                    <li><strong>ESP32 creates WiFi for students</strong> (e.g., "Attendance_CS101_John_14:30")</li>
+                                    <li><strong>Students connect to ESP32 WiFi</strong> and mark attendance</li>
+                                    <li><strong>ESP32 sends data to server</strong> using your internet connection</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <a href="{% url 'admin_ui:correct_esp32_session' %}" class="btn btn-success btn-lg mb-2">
+                                <i class="fas fa-play"></i> Start ESP32 Session
+                            </a>
+                            <br>
+                            <a href="{% url 'admin_ui:dynamic_esp32_session' %}" class="btn btn-outline-info btn-sm mb-1">
+                                <i class="fas fa-wifi"></i> Alternative Method
+                            </a>
+                            <br>
+                            <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-list"></i> Manage ESP32 Devices
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Debug Section -->
     <div class="row mt-4">
         <div class="col-12">

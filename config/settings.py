@@ -79,32 +79,105 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database configuration with fallback
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# Force SQLite if no DATABASE_URL or if it's not a valid PostgreSQL URL
-if not DATABASE_URL or 'postgresql' not in DATABASE_URL:
+# FORCE SQLITE TO FIX SERVER ERROR - UNCOMMENT WHEN READY FOR SUPABASE
+FORCE_SQLITE = os.environ.get('FORCE_SQLITE', 'true').lower() == 'true'
+
+print(f"🔧 Database configuration: FORCE_SQLITE = {FORCE_SQLITE}")
+
+if FORCE_SQLITE:
+    # Force SQLite mode
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("Using SQLite database (no PostgreSQL URL or invalid format)")
-else:
+    print("✅ Using SQLite database (forced mode)")
+    
+elif DATABASE_URL and 'postgresql' in DATABASE_URL:
     # Try PostgreSQL only if we have a valid URL
     try:
         import dj_database_url
+        
+        # For Supabase, try direct connection first
+        if 'supabase.co' in DATABASE_URL:
+            print("🎯 Attempting Supabase connection...")
+            # Parse the URL manually to avoid dj_database_url issues
+            from urllib.parse import urlparse
+            parsed = urlparse(DATABASE_URL)
+            
+            db_config = {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': parsed.path.lstrip('/'),
+                'USER': parsed.username,
+                'PASSWORD': parsed.password,
+                'HOST': parsed.hostname,
+                'PORT': parsed.port or 5432,
+                'OPTIONS': {
+                    'sslmode': 'require',
+                    'connect_timeout': 10,
+                }
+            }
+            print("🔧 Using manual Supabase configuration")
+        else:
+            # Use dj_database_url for other PostgreSQL connections
+            db_config = dj_database_url.parse(DATABASE_URL)
+        
+        # Supabase-specific optimizations
+        if 'supabase.co' in DATABASE_URL:
+            print("🎯 Using Supabase PostgreSQL database")
+            # Optimize for Supabase
+            db_config.update({
+                'CONN_MAX_AGE': 60,  # Connection pooling
+                'OPTIONS': {
+                    'sslmode': 'require',  # Supabase requires SSL
+                    'connect_timeout': 10,  # Connection timeout
+                    'application_name': 'attendance_system',  # App identifier
+                }
+            })
+            
+            # Force IPv4 connection to avoid IPv6 issues
+            if 'HOST' in db_config:
+                # Try to resolve hostname to IPv4
+                import socket
+                try:
+                    hostname = db_config['HOST']
+                    ipv4_addresses = []
+                    for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+                        ipv4_addresses.append(info[4][0])
+                    
+                    if ipv4_addresses:
+                        # Use first IPv4 address
+                        db_config['HOST'] = ipv4_addresses[0]
+                        print(f"🔧 Forced IPv4 connection: {ipv4_addresses[0]}")
+                    else:
+                        print("⚠️  No IPv4 addresses found for hostname")
+                except Exception as e:
+                    print(f"⚠️  Could not resolve IPv4: {e}")
+        else:
+            print("Using PostgreSQL database from DATABASE_URL")
+            
         DATABASES = {
-            'default': dj_database_url.parse(DATABASE_URL)
+            'default': db_config
         }
-        print("Using PostgreSQL database from DATABASE_URL")
     except Exception as e:
-        print(f"Error with PostgreSQL: {e}")
-        print("Falling back to SQLite")
+        print(f"❌ Error with PostgreSQL: {e}")
+        print("🔄 Falling back to SQLite")
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.sqlite3',
                 'NAME': BASE_DIR / 'db.sqlite3',
             }
         }
+else:
+    # Default to SQLite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+    print("📁 Using SQLite database (default fallback)")
 
 # Auto-create database tables if they don't exist
 import os

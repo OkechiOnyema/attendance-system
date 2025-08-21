@@ -1,0 +1,291 @@
+{% extends 'admin_ui/base.html' %}
+{% load static %}
+
+{% block title %}Correct ESP32 Flow - Lecturer WiFi Setup{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        🎯 Correct ESP32 Flow - Lecturer WiFi Setup
+                    </h3>
+                    <p class="text-muted">ESP32 creates WiFi for students but gets internet from your device</p>
+                </div>
+                <div class="card-body">
+                    
+                    <!-- ESP32 Device Status -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="info-box bg-info">
+                                <span class="info-box-icon"><i class="fas fa-wifi"></i></span>
+                                <div class="info-box-content">
+                                    <span class="info-box-text">Total Devices</span>
+                                    <span class="info-box-number">{{ total_devices }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="info-box bg-success">
+                                <span class="info-box-icon"><i class="fas fa-check-circle"></i></span>
+                                <div class="info-box-content">
+                                    <span class="info-box-text">Online Devices</span>
+                                    <span class="info-box-number">{{ online_devices }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="info-box bg-warning">
+                                <span class="info-box-icon"><i class="fas fa-exclamation-triangle"></i></span>
+                                <div class="info-box-content">
+                                    <span class="info-box-text">Offline Devices</span>
+                                    <span class="info-box-number">{{ offline_devices }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="info-box bg-primary">
+                                <span class="info-box-icon"><i class="fas fa-play-circle"></i></span>
+                                <div class="info-box-content">
+                                    <span class="info-box-text">Available for Session</span>
+                                    <span class="info-box-number">{{ available_devices|length }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Available Devices List -->
+                    {% if available_devices %}
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title">📱 Available ESP32 Devices</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Device Name</th>
+                                                    <th>SSID</th>
+                                                    <th>Location</th>
+                                                    <th>Last Seen</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for device in available_devices %}
+                                                <tr>
+                                                    <td>
+                                                        <strong>{{ device.device_name|default:"Unnamed Device" }}</strong>
+                                                    </td>
+                                                    <td>
+                                                        <code>{{ device.ssid|default:"Not Set" }}</code>
+                                                    </td>
+                                                    <td>{{ device.location|default:"Not Set" }}</td>
+                                                    <td>
+                                                        {% if device.last_heartbeat %}
+                                                            <span class="badge badge-success">
+                                                                {{ device.last_heartbeat|timesince }} ago
+                                                            </span>
+                                                        {% else %}
+                                                            <span class="badge badge-warning">Never</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge badge-success">🟢 Online</span>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Create Session Form -->
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title">🎯 Create ESP32 Session with Your WiFi</h5>
+                                </div>
+                                <div class="card-body">
+                                    {% if available_devices %}
+                                        <form method="post">
+                                            {% csrf_token %}
+                                            
+                                            <div class="form-group">
+                                                <label for="course">Select Course</label>
+                                                <select name="course" id="course" class="form-control" required>
+                                                    <option value="">Choose a course...</option>
+                                                    {% for assigned in assigned_courses %}
+                                                        <option value="{{ assigned.course.id }}">
+                                                            {{ assigned.course.code }} - {{ assigned.course.title }}
+                                                            ({{ assigned.session }}, {{ assigned.semester }})
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="form-group">
+                                                        <label for="session">Academic Session</label>
+                                                        <input type="text" name="session" id="session" class="form-control" 
+                                                               value="2024/2025" required>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-group">
+                                                        <label for="semester">Semester</label>
+                                                        <select name="semester" id="semester" class="form-control" required>
+                                                            <option value="1st Semester">1st Semester</option>
+                                                            <option value="2nd Semester">2nd Semester</option>
+                                                            <option value="Summer">Summer</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-group">
+                                                        <label for="start_time">Start Time</label>
+                                                        <input type="time" name="start_time" id="start_time" 
+                                                               class="form-control" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Lecturer WiFi Credentials -->
+                                            <div class="card mt-3">
+                                                <div class="card-header bg-primary text-white">
+                                                    <h6 class="mb-0">📱 Your WiFi Hotspot Credentials</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-info">
+                                                        <i class="fas fa-info-circle"></i>
+                                                        <strong>Important:</strong> Create a WiFi hotspot on your phone/laptop and provide the credentials below.
+                                                        The ESP32 will connect to your WiFi to get internet access.
+                                                    </div>
+                                                    
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <div class="form-group">
+                                                                <label for="lecturer_wifi_ssid">Your WiFi Hotspot Name (SSID)</label>
+                                                                <input type="text" name="lecturer_wifi_ssid" id="lecturer_wifi_ssid" 
+                                                                       class="form-control" placeholder="e.g., MyPhone_Hotspot" required>
+                                                                <small class="form-text text-muted">The WiFi name your phone/laptop creates</small>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <div class="form-group">
+                                                                <label for="lecturer_wifi_password">Your WiFi Hotspot Password</label>
+                                                                <input type="password" name="lecturer_wifi_password" id="lecturer_wifi_password" 
+                                                                       class="form-control" placeholder="e.g., password123" required>
+                                                                <small class="form-text text-muted">The password for your WiFi hotspot</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="alert alert-success mt-3">
+                                                <i class="fas fa-check-circle"></i>
+                                                <strong>How This Works:</strong>
+                                                <ol class="mb-0 mt-2">
+                                                    <li><strong>You create WiFi hotspot</strong> on your phone/laptop</li>
+                                                    <li><strong>ESP32 connects to your WiFi</strong> to get internet access</li>
+                                                    <li><strong>ESP32 creates WiFi for students</strong> (e.g., "Attendance_CS101_John_14:30")</li>
+                                                    <li><strong>Students connect to ESP32 WiFi</strong> and mark attendance</li>
+                                                    <li><strong>ESP32 sends data to server</strong> using your internet connection</li>
+                                                </ol>
+                                            </div>
+
+                                            <button type="submit" class="btn btn-primary btn-lg">
+                                                <i class="fas fa-play"></i> Start ESP32 Session with Your WiFi
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <div class="alert alert-warning">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            <strong>No Available ESP32 Devices</strong><br>
+                                            All ESP32 devices are currently offline or in use. Please:
+                                            <ul class="mb-0 mt-2">
+                                                <li>Check if ESP32 devices are powered on</li>
+                                                <li>Verify internet connectivity</li>
+                                                <li>Wait for devices to come online</li>
+                                            </ul>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title">📋 Quick Actions</h5>
+                                </div>
+                                <div class="card-body">
+                                    <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-outline-primary btn-block mb-2">
+                                        <i class="fas fa-list"></i> Manage ESP32 Devices
+                                    </a>
+                                    <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-outline-info btn-block mb-2">
+                                        <i class="fas fa-history"></i> View Session History
+                                    </a>
+                                    <a href="{% url 'admin_ui:enhanced_dashboard' %}" class="btn btn-outline-success btn-block">
+                                        <i class="fas fa-chart-bar"></i> View Dashboard
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- WiFi Hotspot Instructions -->
+                            <div class="card mt-3">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="card-title">📱 How to Create WiFi Hotspot</h5>
+                                </div>
+                                <div class="card-body">
+                                    <h6>On Android Phone:</h6>
+                                    <ol class="small">
+                                        <li>Go to Settings → Network & Internet</li>
+                                        <li>Tap "Hotspot & Tethering"</li>
+                                        <li>Turn on "WiFi Hotspot"</li>
+                                        <li>Set SSID and password</li>
+                                    </ol>
+                                    
+                                    <h6>On iPhone:</h6>
+                                    <ol class="small">
+                                        <li>Go to Settings → Personal Hotspot</li>
+                                        <li>Turn on "Personal Hotspot"</li>
+                                        <li>Note the WiFi name and password</li>
+                                    </ol>
+                                    
+                                    <h6>On Windows Laptop:</h6>
+                                    <ol class="small">
+                                        <li>Settings → Network & Internet</li>
+                                        <li>Mobile Hotspot → Turn on</li>
+                                        <li>Set network name and password</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-refresh device status -->
+<script>
+    // Refresh device status every 30 seconds
+    setInterval(function() {
+        location.reload();
+    }, 30000);
+</script>
+{% endblock %}

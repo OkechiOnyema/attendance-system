@@ -1,0 +1,275 @@
+{% extends 'admin_ui/base.html' %}
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center mb-4">🔧 ESP32 WiFi Setup & Attendance</h2>
+            <p class="text-center text-muted">Configure ESP32 WiFi and start attendance sessions</p>
+        </div>
+    </div>
+
+    <!-- 🔧 ESP32 Setup Instructions -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">📱 ESP32 WiFi Setup Instructions</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Step 1: Connect to ESP32 Setup WiFi</h6>
+                    <ul class="list-unstyled">
+                        <li><strong>WiFi Name:</strong> <code>{{ setup_ssid }}</code></li>
+                        <li><strong>Password:</strong> <code>{{ setup_password }}</code></li>
+                        <li><strong>IP Address:</strong> <code>{{ esp32_ip }}</code></li>
+                    </ul>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Note:</strong> After connecting to ESP32 WiFi, visit <code>{{ esp32_ip }}</code> to configure your WiFi credentials.
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <h6>Step 2: Configure Your WiFi</h6>
+                    <ol>
+                        <li>Connect to <code>{{ setup_ssid }}</code> WiFi</li>
+                        <li>Open browser and go to <code>{{ esp32_ip }}</code></li>
+                        <li>Enter your WiFi credentials</li>
+                        <li>Wait for connection confirmation</li>
+                        <li>Return here to start attendance session</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔑 API Key for ESP32 Code -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">🔑 API Key for ESP32 Arduino Code</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Important:</strong> Copy this API key to your ESP32 Arduino code in the <code>API_TOKEN</code> variable.
+            </div>
+            
+            <div class="row">
+                <div class="col-md-8">
+                    <label for="apiKey" class="form-label">Your API Key:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="apiKey" value="{{ api_key }}" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyApiKey()">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    <small class="text-muted">This key is automatically generated and stored securely.</small>
+                </div>
+                
+                <div class="col-md-4">
+                    <h6>📝 How to Use:</h6>
+                    <ol class="small">
+                        <li>Copy the API key above</li>
+                        <li>Open your ESP32 Arduino code</li>
+                        <li>Find this line: <code>const char* API_TOKEN = "your-api-token-here";</code></li>
+                        <li>Replace with: <code>const char* API_TOKEN = "{{ api_key }}";</code></li>
+                        <li>Upload updated code to ESP32</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📊 ESP32 Status -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header {% if esp32_status.connected %}bg-success{% else %}bg-secondary{% endif %} text-white">
+            <h5 class="mb-0">📊 ESP32 Connection Status</h5>
+        </div>
+        <div class="card-body">
+            {% if esp32_status.connected %}
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <strong>✅ ESP32 Connected!</strong>
+                    <ul class="mb-0 mt-2">
+                        <li><strong>Device:</strong> {{ esp32_status.device_name }}</li>
+                        <li><strong>Course:</strong> {{ esp32_status.course }}</li>
+                        <li><strong>Connected Students:</strong> {{ esp32_status.connected_devices }}</li>
+                    </ul>
+                </div>
+                
+                <div class="text-center">
+                    <a href="{% url 'admin_ui:esp32_session_active' esp32_status.session_id %}" class="btn btn-success btn-lg">
+                        <i class="fas fa-eye"></i> Monitor Active Session
+                    </a>
+                    <a href="{% url 'admin_ui:esp32_end_session' esp32_status.session_id %}" class="btn btn-danger btn-lg ms-2">
+                        <i class="fas fa-stop"></i> End Session
+                    </a>
+                </div>
+            {% else %}
+                <div class="alert alert-secondary">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>ℹ️ ESP32 Not Connected</strong>
+                    <p class="mb-0 mt-2">Follow the setup instructions above to connect ESP32 to your WiFi network.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🎓 Start Attendance Session -->
+    {% if not esp32_status.connected %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">🎓 Start Attendance Session</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">Select a course to start an ESP32 attendance session:</p>
+            
+            {% if assigned_courses %}
+                <form method="post" action="{% url 'admin_ui:esp32_start_session' %}">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="course_id" class="form-label">Course:</label>
+                            <select name="course_id" id="course_id" class="form-select" required>
+                                <option value="">Select a course...</option>
+                                {% for assigned in assigned_courses %}
+                                    <option value="{{ assigned.course.id }}">
+                                        {{ assigned.course.code }} - {{ assigned.course.title }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="session" class="form-label">Session:</label>
+                            <select name="session" id="session" class="form-select" required>
+                                <option value="2024/2025">2024/2025</option>
+                                <option value="2023/2024">2023/2024</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="semester" class="form-label">Semester:</label>
+                            <select name="semester" id="semester" class="form-select" required>
+                                <option value="1st Semester">1st Semester</option>
+                                <option value="2nd Semester">2nd Semester</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-3">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-play"></i> Start Attendance Session
+                        </button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-book fa-3x mb-3"></i>
+                        <h5>No courses assigned</h5>
+                        <p>You need to be assigned to courses before starting attendance sessions.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 📚 Your Assigned Courses -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">📚 Your Assigned Courses</h5>
+        </div>
+        <div class="card-body">
+            {% if assigned_courses %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Course Code</th>
+                                <th>Title</th>
+                                <th>Session</th>
+                                <th>Semester</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for assigned in assigned_courses %}
+                            <tr>
+                                <td><strong>{{ assigned.course.code }}</strong></td>
+                                <td>{{ assigned.course.title }}</td>
+                                <td><span class="badge bg-secondary">{{ assigned.session }}</span></td>
+                                <td><span class="badge bg-info">{{ assigned.semester }}</span></td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="{% url 'admin_ui:course_management' assigned.course.id %}" class="btn btn-info btn-sm">
+                                            <i class="fas fa-users"></i> Manage Students
+                                        </a>
+                                        <a href="{% url 'admin_ui:course_attendance' assigned.id %}" class="btn btn-primary btn-sm">
+                                            <i class="fas fa-clipboard-check"></i> Take Attendance
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-book fa-3x mb-3"></i>
+                        <h5>No courses assigned yet</h5>
+                        <p>Contact the superuser to get assigned to courses.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🔄 Quick Actions -->
+    <div class="row">
+        <div class="col-12 text-center">
+            <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+            <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success ms-2">
+                <i class="fas fa-plus"></i> Create Network Session
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-refresh ESP32 status every 10 seconds
+setInterval(function() {
+    location.reload();
+}, 10000);
+
+// Show setup instructions more prominently
+document.addEventListener('DOMContentLoaded', function() {
+    if (!{{ esp32_status.connected|yesno:"true,false" }}) {
+        // Highlight setup instructions
+        const setupCard = document.querySelector('.card-header.bg-warning').closest('.card');
+        setupCard.style.border = '3px solid #ffc107';
+        setupCard.style.boxShadow = '0 0 20px rgba(255, 193, 7, 0.3)';
+    }
+});
+
+function copyApiKey() {
+    const apiKeyInput = document.getElementById('apiKey');
+    apiKeyInput.select();
+    apiKeyInput.setSelectionRange(0, 99999); // For mobile devices
+
+    navigator.clipboard.writeText(apiKeyInput.value).then(function() {
+        // Success
+        alert('API Key copied to clipboard!');
+    }, function(err) {
+        // Error
+        console.error('Failed to copy API Key: ', err);
+        alert('Failed to copy API Key. Please copy manually.');
+    });
+}
+</script>
+{% endblock %}

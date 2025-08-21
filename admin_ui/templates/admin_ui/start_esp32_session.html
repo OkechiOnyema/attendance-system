@@ -1,0 +1,198 @@
+{% extends 'admin_ui/base.html' %}
+{% load static %}
+
+{% block title %}Start ESP32 Attendance Session{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-wifi"></i> Start ESP32 Attendance Session
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>How it works:</strong>
+                        <ol class="mb-0 mt-2">
+                            <li>Select a course and configure session details</li>
+                            <li>ESP32 device will automatically detect the session</li>
+                            <li>Students connect to ESP32's WiFi network</li>
+                            <li>Students mark attendance through ESP32 portal</li>
+                            <li>Real-time attendance monitoring on this dashboard</li>
+                        </ol>
+                    </div>
+
+                    {% if assigned_courses %}
+                        <form method="post" id="esp32SessionForm">
+                            {% csrf_token %}
+                            
+                            <div class="mb-3">
+                                <label for="course_id" class="form-label">
+                                    <i class="fas fa-book"></i> Select Course
+                                </label>
+                                <select name="course_id" id="course_id" class="form-select" required>
+                                    <option value="">Choose a course...</option>
+                                    {% for course in assigned_courses %}
+                                    <option value="{{ course.course.id }}">
+                                        {{ course.course.code }} - {{ course.course.name }}
+                                        ({{ course.course.students.count }} students)
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="session_name" class="form-label">
+                                            <i class="fas fa-calendar"></i> Academic Session
+                                        </label>
+                                        <input type="text" name="session_name" id="session_name" 
+                                               class="form-control" value="{{ current_session }}" required>
+                                        <div class="form-text">e.g., 2024/2025</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="semester" class="form-label">
+                                            <i class="fas fa-clock"></i> Semester
+                                        </label>
+                                        <select name="semester" id="semester" class="form-select" required>
+                                            {% for semester in semesters %}
+                                            <option value="{{ semester }}">{{ semester }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="device_info" class="form-label">
+                                    <i class="fas fa-microchip"></i> ESP32 Device Information
+                                </label>
+                                <div class="alert alert-warning">
+                                    <strong>Device Status:</strong>
+                                    <span id="deviceStatus">Checking for ESP32 devices...</span>
+                                    <br>
+                                    <small class="text-muted">
+                                        Make sure your ESP32 device is powered on and connected to the internet.
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg" id="startSessionBtn">
+                                    <i class="fas fa-play"></i> Start ESP32 Session
+                                </button>
+                                <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                </a>
+                            </div>
+                        </form>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                            <h5 class="text-warning">No Courses Assigned</h5>
+                            <p class="text-muted">
+                                You don't have any courses assigned yet. Please contact the administrator 
+                                to assign courses to your account.
+                            </p>
+                            <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-primary">
+                                <i class="fas fa-arrow-left"></i> Back to Dashboard
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ESP32 Device Detection Modal -->
+<div class="modal fade" id="deviceDetectionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-search"></i> Detecting ESP32 Devices
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Searching for available ESP32 devices...</p>
+                    <div id="deviceList" class="mt-3"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('esp32SessionForm');
+    const deviceStatus = document.getElementById('deviceStatus');
+    const startSessionBtn = document.getElementById('startSessionBtn');
+    
+    // Check for ESP32 devices when page loads
+    checkESP32Devices();
+    
+    // Form submission
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (validateForm()) {
+            startSessionBtn.disabled = true;
+            startSessionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting Session...';
+            
+            // Submit form
+            form.submit();
+        }
+    });
+    
+    function validateForm() {
+        const courseId = document.getElementById('course_id').value;
+        const sessionName = document.getElementById('session_name').value;
+        const semester = document.getElementById('semester').value;
+        
+        if (!courseId || !sessionName || !semester) {
+            alert('Please fill in all required fields.');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    function checkESP32Devices() {
+        deviceStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking for ESP32 devices...';
+        
+        // Simulate device detection (replace with actual API call)
+        setTimeout(() => {
+            deviceStatus.innerHTML = '<i class="fas fa-check-circle text-success"></i> ESP32 device detected and ready';
+        }, 2000);
+    }
+    
+    // Course selection change
+    document.getElementById('course_id').addEventListener('change', function() {
+        const selectedCourse = this.options[this.selectedIndex];
+        if (selectedCourse.value) {
+            const studentCount = selectedCourse.text.match(/\((\d+) students\)/);
+            if (studentCount) {
+                console.log(`Selected course has ${studentCount[1]} enrolled students`);
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

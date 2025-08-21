@@ -276,15 +276,36 @@ void loop() {
 }
 
 void setupDevice() {
+  // Load saved device configuration from EEPROM
+  device_id = EEPROM.readString(0);
+  device_name = EEPROM.readString(300);
+  current_course = EEPROM.readString(400);
+  current_lecturer = EEPROM.readString(500);
+  
   // Generate unique device ID if not set
-  if (EEPROM.readString(0) == "") {
+  if (device_id == "") {
+    device_id = "ESP32_" + String(random(1000, 9999));
     EEPROM.writeString(0, device_id);
     EEPROM.commit();
-  } else {
-    device_id = EEPROM.readString(0);
+  }
+  
+  // Set default device name if not saved
+  if (device_name == "") {
+    device_name = "Smart Attendance Device";
+  }
+  
+  // Check if we have session information saved
+  if (current_course != "" && current_lecturer != "") {
+    session_active = true;
+    Serial.println("📚 Restored session state from EEPROM");
   }
   
   Serial.println("Device ID: " + device_id);
+  Serial.println("Device Name: " + device_name);
+  if (session_active) {
+    Serial.println("Active Course: " + current_course);
+    Serial.println("Active Lecturer: " + current_lecturer);
+  }
 }
 
 void loadWiFiCredentials() {
@@ -478,7 +499,7 @@ void registerDevice() {
 
 void sendHeartbeat() {
   HTTPClient http;
-  http.begin(SERVER_URL + "/admin-panel/api/device/heartbeat/");
+  http.begin(SERVER_URL + "/admin-panel/api/esp32/heartbeat/");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-API-Key", API_KEY);
   
@@ -492,7 +513,82 @@ void sendHeartbeat() {
   int httpResponseCode = http.POST(jsonString);
   
   if (httpResponseCode > 0) {
+    String response = http.getString();
     Serial.println("Heartbeat sent successfully");
+    
+    // 🔌 PROCESS DYNAMIC CONFIGURATION RESPONSE
+    DynamicJsonDocument responseDoc(1024);
+    DeserializationError error = deserializeJson(responseDoc, response);
+    
+    if (!error) {
+      // Check if we received configuration data
+      if (responseDoc.containsKey("configuration")) {
+        JsonObject config = responseDoc["configuration"];
+        
+        if (config["active_session"] == true) {
+          // Apply active session configuration
+          String courseCode = config["course_code"];
+          String courseTitle = config["course_title"];
+          String session = config["session"];
+          String semester = config["semester"];
+          String newSSID = config["ssid"];
+          String newDeviceId = config["device_id"];
+          
+          Serial.println("🎯 Applying dynamic configuration:");
+          Serial.println("   Course: " + courseCode + " - " + courseTitle);
+          Serial.println("   Session: " + session + " " + semester);
+          Serial.println("   New SSID: " + newSSID);
+          Serial.println("   New Device ID: " + newDeviceId);
+          
+          // Update device configuration
+          device_name = courseCode + " - " + courseTitle;
+          device_id = newDeviceId;
+          
+          // Update session information
+          session_active = true;
+          current_course = courseCode;
+          current_lecturer = config["lecturer"];
+          current_session_id = String(config["session_id"]);
+          
+          // Save new configuration to EEPROM
+          EEPROM.writeString(0, device_id);
+          EEPROM.writeString(300, device_name);
+          EEPROM.writeString(400, current_course);
+          EEPROM.writeString(500, current_lecturer);
+          EEPROM.commit();
+          
+          // If we're in access point mode, update the SSID
+          if (!wifi_configured) {
+            WiFi.softAP(newSSID.c_str(), "", 1, 0, 4); // Channel 1, hidden=false, max_connections=4
+            Serial.println("📡 Updated ESP32 WiFi network: " + newSSID);
+          }
+          
+          Serial.println("✅ Dynamic configuration applied successfully!");
+          
+        } else {
+          // No active session - device in standby
+          if (session_active) {
+            Serial.println("💤 No active session - device entering standby mode");
+            session_active = false;
+            current_course = "";
+            current_lecturer = "";
+            current_session_id = "";
+            
+            // Reset to default device name
+            device_name = "Smart Attendance Device";
+            
+            // Save standby state
+            EEPROM.writeString(300, device_name);
+            EEPROM.writeString(400, "");
+            EEPROM.writeString(500, "");
+            EEPROM.commit();
+          }
+        }
+      }
+    } else {
+      Serial.println("❌ Failed to parse configuration response: " + String(error.c_str()));
+    }
+    
   } else {
     Serial.println("Failed to send heartbeat");
   }

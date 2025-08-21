@@ -1,0 +1,267 @@
+{% extends 'admin_ui/base.html' %}
+{% load static %}
+
+{% block title %}ESP32 Session Active - {{ network_session.course.code }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center mb-4">📊 Active ESP32 Attendance Session</h2>
+            <p class="text-center text-muted">Monitoring attendance for {{ session.course.code }} - {{ session.course.title }}</p>
+        </div>
+    </div>
+
+    <!-- 🎯 Session Information -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">🎯 Session Details</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <i class="fas fa-book fa-2x text-primary mb-2"></i>
+                        <h6>Course</h6>
+                        <p class="mb-0"><strong>{{ session.course.code }}</strong><br>{{ session.course.title }}</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <i class="fas fa-user-tie fa-2x text-info mb-2"></i>
+                        <h6>Lecturer</h6>
+                        <p class="mb-0">{{ session.lecturer.get_full_name|default:session.lecturer.username }}</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <i class="fas fa-calendar fa-2x text-warning mb-2"></i>
+                        <h6>Date & Time</h6>
+                        <p class="mb-0">{{ session.date }}<br>{{ session.start_time|time:"H:i" }}</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <i class="fas fa-wifi fa-2x text-success mb-2"></i>
+                        <h6>ESP32 Device</h6>
+                        <p class="mb-0">{{ session.esp32_device.device_name }}<br>{{ session.esp32_device.ssid }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📊 Attendance Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center bg-primary text-white">
+                <div class="card-body">
+                    <i class="fas fa-users fa-2x mb-2"></i>
+                    <h4>{{ total_enrolled }}</h4>
+                    <p class="mb-0">Total Enrolled Students</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center bg-success text-white">
+                <div class="card-body">
+                    <i class="fas fa-wifi fa-2x mb-2"></i>
+                    <h4>{{ connected_devices.count }}</h4>
+                    <p class="mb-0">Connected Devices</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center bg-info text-white">
+                <div class="card-body">
+                    <i class="fas fa-clipboard-check fa-2x mb-2"></i>
+                    <h4>{{ attendance_records.count }}</h4>
+                    <p class="mb-0">Attendance Marked</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📱 Connected Devices -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">📱 Connected Student Devices</h5>
+        </div>
+        <div class="card-body">
+            {% if connected_devices %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Device MAC</th>
+                                <th>IP Address</th>
+                                <th>Connected At</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for device in connected_devices %}
+                            <tr>
+                                <td><code>{{ device.mac_address }}</code></td>
+                                <td><span class="badge bg-secondary">{{ device.ip_address|default:"N/A" }}</span></td>
+                                <td><small>{{ device.connected_at|time:"H:i:s" }}</small></td>
+                                <td><span class="badge bg-success">Connected</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-wifi fa-3x mb-3"></i>
+                        <h5>No devices connected yet</h5>
+                        <p>Students need to connect to the ESP32 WiFi network to appear here.</p>
+                        <div class="alert alert-info">
+                            <strong>WiFi Network:</strong> {{ session.esp32_device.ssid }}<br>
+                            <strong>Password:</strong> {{ session.esp32_device.password }}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ✅ Attendance Records -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">✅ Attendance Records</h5>
+        </div>
+        <div class="card-body">
+            {% if attendance_records %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Student</th>
+                                <th>Matric No</th>
+                                <th>Status</th>
+                                <th>Marked At</th>
+                                <th>Device Info</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in attendance_records %}
+                            <tr>
+                                <td><strong>{{ record.student.name }}</strong></td>
+                                <td><code>{{ record.student.matric_no }}</code></td>
+                                <td>
+                                    {% if record.status == 'present' %}
+                                        <span class="badge bg-success">Present</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Absent</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ record.marked_at|time:"H:i:s" }}</small></td>
+                                <td>
+                                    {% if record.device_mac %}
+                                        <small class="text-muted">{{ record.device_mac }}</small>
+                                    {% else %}
+                                        <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-clipboard-check fa-3x mb-3"></i>
+                        <h5>No attendance records yet</h5>
+                        <p>Students need to mark their attendance through the ESP32 system.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🔄 Session Controls -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">🔄 Session Controls</h5>
+        </div>
+        <div class="card-body text-center">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>📱 Student Instructions</h6>
+                    <div class="alert alert-info">
+                        <strong>WiFi Network:</strong> {{ session.esp32_device.ssid }}<br>
+                        <strong>Password:</strong> {{ session.esp32_device.password }}<br>
+                        <strong>IP Address:</strong> {{ session.esp32_device.ip_address|default:"192.168.4.1" }}
+                    </div>
+                    <p class="text-muted">Students should connect to this WiFi and visit the IP address to mark attendance.</p>
+                </div>
+                
+                <div class="col-md-6">
+                    <h6>🎯 Lecturer Actions</h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success" onclick="refreshPage()">
+                            <i class="fas fa-sync-alt"></i> Refresh Status
+                        </button>
+                        <a href="{% url 'admin_ui:esp32_end_session' session.id %}" class="btn btn-danger" 
+                           onclick="return confirm('Are you sure you want to end this session?')">
+                            <i class="fas fa-stop"></i> End Session
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔄 Quick Actions -->
+    <div class="row">
+        <div class="col-12 text-center">
+            <a href="{% url 'admin_ui:esp32_setup' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to ESP32 Setup
+            </a>
+            <a href="{% url 'admin_ui:dashboard' %}" class="btn btn-primary ms-2">
+                <i class="fas fa-home"></i> Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-refresh page every 15 seconds
+setInterval(function() {
+    refreshPage();
+}, 15000);
+
+function refreshPage() {
+    location.reload();
+}
+
+// Show real-time updates
+document.addEventListener('DOMContentLoaded', function() {
+    // Highlight new connections
+    const connectedCount = {{ connected_devices.count }};
+    const attendanceCount = {{ attendance_records.count }};
+    
+    if (connectedCount > 0) {
+        document.querySelector('.bg-success h4').style.animation = 'pulse 1s infinite';
+    }
+    
+    if (attendanceCount > 0) {
+        document.querySelector('.bg-info h4').style.animation = 'pulse 1s infinite';
+    }
+});
+
+// Add CSS animation
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+`;
+document.head.appendChild(style);
+</script>
+{% endblock %}

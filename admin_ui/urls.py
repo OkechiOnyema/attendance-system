@@ -56,6 +56,38 @@ create_admin_view,
     network_session_active_view,
     end_network_session_view,
     student_attendance_marking_view,
+
+    # 🚀 NEW ESP32 ATTENDANCE SYSTEM URLs
+    start_esp32_session_view,
+    esp32_session_active_view,
+    end_esp32_session_view,
+    esp32_device_management_view,
+    dynamic_esp32_session_view,
+    
+    # 🎯 Correct ESP32 Flow (Lecturer provides WiFi)
+    correct_esp32_session_view,
+    
+    # 🔌 ESP32 API ENDPOINTS
+    esp32_heartbeat_api,
+    esp32_check_session_api,
+    esp32_mark_attendance_api,
+    esp32_register_device_api,
+
+    # ESP32 Secure Attendance API Endpoints
+    esp32_start_session_api,
+    esp32_end_session_api,
+    esp32_device_connected_api,
+    esp32_device_disconnected_api,
+    esp32_record_attendance_api,
+    esp32_heartbeat_api,
+    esp32_session_status_api,
+    esp32_verify_student_api,
+
+    # ESP32 Setup and Management
+    esp32_setup_view,
+    esp32_start_session_view,
+    esp32_session_active_view,
+    esp32_end_session_view,
 )
 
 app_name = 'admin_ui'
@@ -112,11 +144,45 @@ urlpatterns = [
     path('api/esp32/mark-attendance/', api_mark_attendance, name='api_mark_attendance'),
 
     # 📋 View Assignments
-    path('view-assignments/', view_assignments, name='view_assignments'),
+    path('assignments/', view_assignments, name='view_assignments'),
     
     # 🎯 ESP32-Based Attendance Marking
     path('start-network-session/', start_network_session_view, name='start_network_session'),
     path('network-session/<int:session_id>/active/', network_session_active_view, name='network_session_active'),
     path('network-session/<int:session_id>/end/', end_network_session_view, name='end_network_session'),
     path('student-attendance-marking/', student_attendance_marking_view, name='student_attendance_marking'),
+    
+    # 🚀 Dynamic ESP32 Session Management
+    path('dynamic-esp32-session/', dynamic_esp32_session_view, name='dynamic_esp32_session'),
+    
+    # 🎯 Correct ESP32 Flow (Lecturer provides WiFi)
+    path('correct-esp32-session/', correct_esp32_session_view, name='correct_esp32_session'),
+
+    # 🚀 NEW ESP32 ATTENDANCE SYSTEM URLs
+    path('esp32/start-session/', start_esp32_session_view, name='start_esp32_session'),
+    path('esp32/session/<int:session_id>/active/', esp32_session_active_view, name='esp32_session_active'),
+    path('esp32/session/<int:session_id>/end/', end_esp32_session_view, name='end_esp32_session'),
+    path('esp32/devices/', esp32_device_management_view, name='esp32_device_management'),
+    
+    # 🔌 ESP32 API ENDPOINTS
+    path('api/esp32/heartbeat/', esp32_heartbeat_api, name='esp32_heartbeat_api'),
+    path('api/esp32/check-session/', esp32_check_session_api, name='esp32_check_session_api'),
+    path('api/esp32/mark-attendance/', esp32_mark_attendance_api, name='esp32_mark_attendance_api'),
+    path('api/esp32/register/', esp32_register_device_api, name='esp32_register_device_api'),
+
+    # ESP32 Secure Attendance API Endpoints
+    path('api/esp32/start-session/', esp32_start_session_api, name='esp32_start_session_api'),
+    path('api/esp32/end-session/', esp32_end_session_api, name='esp32_end_session_api'),
+    path('api/esp32/device-connected/', esp32_device_connected_api, name='esp32_device_connected_api'),
+    path('api/esp32/device-disconnected/', esp32_device_disconnected_api, name='esp32_device_disconnected_api'),
+    path('api/esp32/record-attendance/', esp32_record_attendance_api, name='esp32_record_attendance_api'),
+    path('api/esp32/heartbeat/', esp32_heartbeat_api, name='esp32_heartbeat_api'),
+    path('api/esp32/session-status/', esp32_session_status_api, name='esp32_session_status_api'),
+    path('api/esp32/verify-student/', esp32_verify_student_api, name='esp32_verify_student_api'),
+
+    # ESP32 Setup and Management
+    path('esp32-setup/', esp32_setup_view, name='esp32_setup'),
+    path('esp32-start-session/', esp32_start_session_view, name='esp32_start_session'),
+    path('esp32-session-active/<int:session_id>/', esp32_session_active_view, name='esp32_session_active'),
+    path('esp32-end-session/<int:session_id>/', esp32_end_session_view, name='esp32_end_session'),
 ]

@@ -4,32 +4,19 @@
     <div class="row mb-4">
         <div class="col-12">
             <h2 class="text-center mb-4">👨‍🏫 Lecturer Dashboard</h2>
-            
-            <!-- 📝 Information Note -->
-            <div class="alert alert-info text-center mb-4">
-                <i class="fas fa-info-circle"></i>
-                <strong>Dashboard Overview:</strong> 
-                Shows your assigned courses, today's active network sessions, and total enrolled students across all your courses.
-            </div>
             <p class="text-center text-muted">Welcome, {{ user.get_full_name|default:user.username }}!</p>
         </div>
     </div>
 
-    <!-- 🚪 Navigation Buttons -->
+    <!-- 🚪 Quick Actions -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-center gap-2 flex-wrap">
-                <a href="{% url 'admin_ui:network_session_list' %}" class="btn btn-info">
-                    <i class="fas fa-wifi"></i> Network Sessions
+            <div class="d-flex justify-content-center gap-3 flex-wrap">
+                <a href="{% url 'admin_ui:esp32_setup' %}" class="btn btn-warning btn-lg">
+                    <i class="fas fa-wifi"></i> ESP32 Setup WiFi
                 </a>
-                <a href="{% url 'admin_ui:enhanced_dashboard' %}" class="btn btn-success">
-                    <i class="fas fa-plus"></i> Enhanced Dashboard
-                </a>
-                <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-info">
+                <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success btn-lg">
                     <i class="fas fa-plus"></i> Create Network Session
-                </a>
-                <a href="{% url 'admin_ui:esp32_device_list' %}" class="btn btn-warning">
-                    <i class="fas fa-microchip"></i> ESP32 Devices
                 </a>
                 <a href="{% url 'admin_ui:logout' %}" class="btn btn-danger">
                     <i class="fas fa-sign-out-alt"></i> Logout
@@ -71,11 +58,8 @@
                                         <a href="{% url 'admin_ui:course_attendance' assigned.id %}" class="btn btn-primary btn-sm">
                                             <i class="fas fa-clipboard-check"></i> Take Attendance
                                         </a>
-                                        <a href="{% url 'admin_ui:network_session_create' %}?course={{ assigned.course.id }}" class="btn btn-success btn-sm me-1">
+                                        <a href="{% url 'admin_ui:network_session_create' %}?course={{ assigned.course.id }}" class="btn btn-success btn-sm">
                                             <i class="fas fa-wifi"></i> Network Session
-                                        </a>
-                                        <a href="{% url 'admin_ui:start_network_session' %}" class="btn btn-warning btn-sm">
-                                            <i class="fas fa-microchip"></i> ESP32 Session
                                         </a>
                                     </div>
                                 </td>
@@ -148,11 +132,11 @@
                         <i class="fas fa-wifi fa-3x mb-3"></i>
                         <h5>No active network sessions</h5>
                         <p>Start a network session to track attendance via WiFi.</p>
-                        <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success me-2">
-                            <i class="fas fa-plus"></i> Create Session
+                        <a href="{% url 'admin_ui:esp32_setup' %}" class="btn btn-warning me-2">
+                            <i class="fas fa-wifi"></i> Setup ESP32 WiFi
                         </a>
-                        <a href="{% url 'admin_ui:start_network_session' %}" class="btn btn-warning">
-                            <i class="fas fa-wifi"></i> Start ESP32 Session
+                        <a href="{% url 'admin_ui:network_session_create' %}" class="btn btn-success">
+                            <i class="fas fa-plus"></i> Create Session
                         </a>
                     </div>
                 </div>
