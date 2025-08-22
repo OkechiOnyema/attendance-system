@@ -9,12 +9,12 @@
 
 // ===== WIFI CLIENT CONFIGURATION =====
 // Your WiFi network credentials (for Django communication)
-#define WIFI_NETWORK_NAME "AttendanceWiFi"  // Your WiFi network name
-#define WIFI_NETWORK_PASSWORD "attendance123"  // Your WiFi password
+#define WIFI_NETWORK_NAME "LecturerHotspot"  // Your WiFi network name
+#define WIFI_NETWORK_PASSWORD "lecturer123"  // Your WiFi password
 
 // ===== DJANGO SERVER CONFIGURATION =====
 // Django server URL (localhost - ESP32 will reach it via your computer)
-#define DJANGO_SERVER_URL "http://10.66.19.27:8000"  // Your computer's IP on the network
+#define DJANGO_SERVER_URL "http://192.168.4.1:8000"  // Your computer's IP on the network
 
 // ===== DEVICE CONFIGURATION =====
 #define DEVICE_ID_PREFIX "ESP32_001"  // Must match Django database ESP32 device ID

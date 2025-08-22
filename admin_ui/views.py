@@ -1467,6 +1467,7 @@ def student_attendance_marking_view(request):
     return render(request, 'admin_ui/student_attendance_marking.html')
 
 # ESP32 API Endpoints for device communication
+@csrf_exempt
 def api_device_heartbeat(request):
     """ESP32 device heartbeat endpoint"""
     if request.method == 'POST':
@@ -1756,12 +1757,20 @@ def esp32_device_management_view(request):
 # ESP32 API ENDPOINTS
 # ========================================
 
+@csrf_exempt
 def esp32_heartbeat_api(request):
     """ESP32 heartbeat to check server connectivity and get dynamic configuration"""
     if request.method == 'POST':
-        device_id = request.POST.get('device_id')
-        wifi_ssid = request.POST.get('wifi_ssid')
-        connected_students = request.POST.get('connected_students', 0)
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            wifi_ssid = data.get('wifi_ssid', '')
+            connected_students = data.get('connected_students', 0)
+        except json.JSONDecodeError:
+            # Fallback to POST data for compatibility
+            device_id = request.POST.get('device_id')
+            wifi_ssid = request.POST.get('wifi_ssid', '')
+            connected_students = request.POST.get('connected_students', 0)
         
         try:
             device = ESP32Device.objects.get(device_id=device_id)
@@ -1794,8 +1803,8 @@ def esp32_heartbeat_api(request):
                         'lecturer': active_session.lecturer.username,
                         'session_id': active_session.id,
                         'start_time': active_session.start_time.isoformat(),
-                        'lecturer_ssid': request.POST.get('lecturer_wifi_ssid', ''),
-                        'lecturer_password': request.POST.get('lecturer_wifi_password', '')
+                        'lecturer_ssid': data.get('lecturer_wifi_ssid', ''),
+                        'lecturer_password': data.get('lecturer_wifi_password', '')
                     }
                 })
             else:
@@ -2290,6 +2299,89 @@ def esp32_start_session_api(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def esp32_record_attendance_api(request):
@@ -2361,6 +2453,89 @@ def esp32_record_attendance_api(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def esp32_heartbeat_api(request):
@@ -2385,6 +2560,89 @@ def esp32_heartbeat_api(request):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
 
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -2432,6 +2690,89 @@ def esp32_session_status_api(request):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -2498,6 +2839,89 @@ def esp32_verify_student_api(request):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
 
 # 🔧 ESP32 Setup and Management Views
 def esp32_setup_view(request):
@@ -2750,8 +3174,92 @@ def esp32_end_session_api(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
 @csrf_exempt
 @require_http_methods(["POST"])
+@csrf_exempt
 def esp32_device_connected_api(request):
     """ESP32 API endpoint for device connection notification"""
     # Verify API key
@@ -2801,8 +3309,92 @@ def esp32_device_connected_api(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
 @csrf_exempt
 @require_http_methods(["POST"])
+@csrf_exempt
 def esp32_device_disconnected_api(request):
     """ESP32 API endpoint for device disconnection notification"""
     # Verify API key
@@ -2848,3 +3440,6906 @@ def esp32_device_disconnected_api(request):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def esp32_session_status_api(request):
+    """ESP32 API endpoint to get session status"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        device_id = request.GET.get('device_id')
+        
+        if not device_id:
+            return JsonResponse({'error': 'Missing device_id parameter'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if active_session:
+            # Get connected devices count
+            connected_count = ConnectedDevice.objects.filter(
+                network_session=active_session,
+                is_connected=True
+            ).count()
+            
+            return JsonResponse({
+                'success': True,
+                'session_active': True,
+                'course_code': active_session.course.code,
+                'course_title': active_session.course.title,
+                'lecturer': active_session.lecturer.username,
+                'start_time': active_session.start_time.isoformat(),
+                'connected_devices': connected_count,
+                'session_id': active_session.id
+            })
+        else:
+            return JsonResponse({
+                'success': True,
+                'session_active': False,
+                'message': 'No active session found'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def esp32_verify_student_api(request):
+    """ESP32 API endpoint to verify student enrollment"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        matric_no = data.get('matric_no')
+        course_code = data.get('course_code')
+        
+        if not matric_no or not course_code:
+            return JsonResponse({'error': 'Missing matric_no or course_code'}, status=400)
+        
+        # Check if student exists
+        try:
+            student = Student.objects.get(matric_no=matric_no)
+        except Student.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Student not found',
+                'enrolled': False
+            })
+        
+        # Check if course exists
+        try:
+            course = Course.objects.get(code=course_code)
+        except Course.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Course not found',
+                'enrolled': False
+            })
+        
+        # Check if student is enrolled in this course
+        is_enrolled = CourseEnrollment.objects.filter(
+            student=student,
+            course=course,
+            session='2024/2025',
+            semester='1st Semester'
+        ).exists()
+        
+        if is_enrolled:
+            return JsonResponse({
+                'success': True,
+                'message': 'Student verified and enrolled',
+                'enrolled': True,
+                'student_name': student.name,
+                'matric_no': student.matric_no,
+                'course_code': course.code,
+                'course_title': course.title
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': 'Student not enrolled in this course',
+                'enrolled': False,
+                'student_name': student.name,
+                'matric_no': student.matric_no
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Device not found in active session'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+# ===== ESP32 PRESENCE VERIFICATION SYSTEM (METHOD 2) =====
+
+@csrf_exempt
+def esp32_presence_update_api(request):
+    """
+    ESP32 sends list of connected devices for presence verification
+    This is used with Method 2: Simple presence verification system
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            device_id = data.get('device_id')
+            connected_devices = data.get('connected_devices', [])
+            timestamp = data.get('timestamp')
+            
+            if not device_id:
+                return JsonResponse({'status': 'error', 'message': 'Device ID required'}, status=400)
+            
+            # Find or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=device_id,
+                defaults={
+                    'device_name': f'Presence Verification Device {device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Update last heartbeat
+            esp32_device.last_heartbeat = timezone.now()
+            esp32_device.save()
+            
+            # Store connected devices for presence verification
+            cache_key = f'esp32_presence_{device_id}'
+            from django.core.cache import cache
+            cache.set(cache_key, {
+                'connected_devices': connected_devices,
+                'timestamp': timezone.now().isoformat(),
+                'device_count': len(connected_devices)
+            }, timeout=300)  # Cache for 5 minutes
+            
+            print(f"📥 Presence update: {len(connected_devices)} devices connected")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Presence data updated for {len(connected_devices)} devices',
+                'device_id': device_id,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+def verify_student_presence(student_id=None, device_id="ESP32_PRESENCE_001"):
+    """
+    Check if a student is physically present in the classroom
+    Returns (bool, message) tuple
+    """
+    try:
+        from django.core.cache import cache
+        cache_key = f'esp32_presence_{device_id}'
+        presence_data = cache.get(cache_key)
+        
+        if not presence_data:
+            return False, "No presence data available from ESP32"
+        
+        connected_devices = presence_data.get('connected_devices', [])
+        device_count = len(connected_devices)
+        
+        if device_count > 0:
+            return True, f"Presence verified - {device_count} devices connected to classroom WiFi"
+        else:
+            return False, "No devices connected to classroom network"
+            
+    except Exception as e:
+        return False, f"Error checking presence: {str(e)}"
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@csrf_exempt
+def esp32_device_disconnected_api(request):
+    """ESP32 API endpoint for device disconnection notification"""
+    # Verify API key
+    if not verify_api_key(request):
+        return JsonResponse({'error': 'Invalid API key'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        mac_address = data.get('mac_address')
+        
+        if not device_id or not mac_address:
+            return JsonResponse({'error': 'Missing device_id or mac_address'}, status=400)
+        
+        # Find active session for this device
+        active_session = NetworkSession.objects.filter(
+            esp32_device__device_id=device_id,
+            is_active=True
+        ).first()
+        
+        if not active_session:
+            return JsonResponse({'error': 'No active session found for this device'}, status=400)
+        
+        # Update connected device record to disconnected
+        try:
+            connected_device = ConnectedDevice.objects.get(
+                network_session=active_session,
+                mac_address=mac_address
+            )
+            connected_device.is_connected = False
+            connected_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Device {mac_address} disconnected',
+                'device_id': connected_device.id
+            })
+        except ConnectedDevice.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': f'Device {mac_address} not found in active session'
+            }, status=404)
+            
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+@csrf_exempt
+def esp32_presence_verify_api(request):
+    """
+    Verify if a student device was present at a specific time
+    Used by the attendance system to check ESP32 presence
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            student_device_id = data.get('student_device_id')
+            timestamp = data.get('timestamp')
+            esp32_device_id = data.get('esp32_device_id')
+            
+            if not all([student_device_id, timestamp, esp32_device_id]):
+                return JsonResponse({'error': 'Missing required parameters'}, status=400)
+            
+            # Check cache for presence data
+            from django.core.cache import cache
+            cache_key = f'esp32_presence_{esp32_device_id}'
+            presence_data = cache.get(cache_key)
+            
+            if not presence_data:
+                return JsonResponse({
+                    'present': False,
+                    'reason': 'No ESP32 presence data available'
+                })
+            
+            # Check if student device was connected
+            was_present = student_device_id in presence_data.get('connected_devices', [])
+            
+            return JsonResponse({
+                'present': was_present,
+                'timestamp': presence_data.get('timestamp'),
+                'esp32_device': esp32_device_id,
+                'total_devices': presence_data.get('device_count', 0)
+            })
+            
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+def esp32_device_management(request):
+    """
+    Admin interface for managing ESP32 devices and viewing presence data
+    """
+    if not request.user.is_authenticated or not request.user.is_staff:
+        return redirect('admin:login')
+    
+    # Get all ESP32 devices
+    esp32_devices = ESP32Device.objects.all().order_by('-last_heartbeat')
+    
+    # Get presence data from cache
+    from django.core.cache import cache
+    presence_data = {}
+    for device in esp32_devices:
+        cache_key = f'esp32_presence_{device.device_id}'
+        data = cache.get(cache_key)
+        if data:
+            presence_data[device.device_id] = data
+    
+    context = {
+        'esp32_devices': esp32_devices,
+        'presence_data': presence_data,
+        'total_devices': len(esp32_devices),
+        'active_devices': esp32_devices.filter(is_active=True).count()
+    }
+    
+    return render(request, 'admin_ui/esp32_management.html', context)

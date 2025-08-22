@@ -82,6 +82,9 @@ create_admin_view,
     esp32_heartbeat_api,
     esp32_session_status_api,
     esp32_verify_student_api,
+    esp32_presence_update_api,
+    esp32_presence_verify_api,
+    esp32_device_management,
 
     # ESP32 Setup and Management
     esp32_setup_view,
@@ -137,7 +140,6 @@ urlpatterns = [
     path('network-sessions/<int:session_id>/end/', network_session_end, name='network_session_end'),
 
     # 🔌 ESP32 API Endpoints (no authentication required for device communication)
-    path('api/esp32/heartbeat/', api_device_heartbeat, name='api_device_heartbeat'),
     path('api/esp32/connected/', api_device_connected, name='api_device_connected'),
     path('api/esp32/disconnected/', api_device_disconnected, name='api_device_disconnected'),
     path('api/esp32/active-course/', api_active_course, name='api_active_course'),
@@ -176,9 +178,13 @@ urlpatterns = [
     path('api/esp32/device-connected/', esp32_device_connected_api, name='esp32_device_connected_api'),
     path('api/esp32/device-disconnected/', esp32_device_disconnected_api, name='esp32_device_disconnected_api'),
     path('api/esp32/record-attendance/', esp32_record_attendance_api, name='esp32_record_attendance_api'),
-    path('api/esp32/heartbeat/', esp32_heartbeat_api, name='esp32_heartbeat_api'),
     path('api/esp32/session-status/', esp32_session_status_api, name='esp32_session_status_api'),
     path('api/esp32/verify-student/', esp32_verify_student_api, name='esp32_verify_student_api'),
+    
+    # ESP32 Presence Verification System (Method 2)
+    path('api/esp32/presence-update/', esp32_presence_update_api, name='esp32_presence_update_api'),
+    path('api/esp32/presence-verify/', esp32_presence_verify_api, name='esp32_presence_verify_api'),
+    path('esp32-management/', esp32_device_management, name='esp32_device_management'),
 
     # ESP32 Setup and Management
     path('esp32-setup/', esp32_setup_view, name='esp32_setup'),

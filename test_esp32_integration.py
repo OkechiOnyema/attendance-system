@@ -17,7 +17,7 @@ from datetime import datetime
 
 # Configuration
 DJANGO_SERVER = "http://127.0.0.1:8000"
-BASE_DEVICE_ID = "ESP32_"  # Base device ID prefix
+BASE_DEVICE_ID = "ESP32_DYNAMIC_001"  # Use the actual device ID we created
 
 # Test endpoints
 ACTIVE_COURSE_URL = f"{DJANGO_SERVER}/admin-panel/api/esp32/active-course/"
@@ -64,7 +64,7 @@ def test_heartbeat(course_info=None):
     
     if course_info and course_info.get('active_course'):
         data = {
-            "device_id": course_info.get('device_id'),
+            "device_id": BASE_DEVICE_ID,  # Use the actual device ID
             "course_code": course_info.get('course_code'),
             "course_title": course_info.get('course_title'),
             "session": course_info.get('session'),
@@ -74,7 +74,7 @@ def test_heartbeat(course_info=None):
         }
     else:
         data = {
-            "device_id": f"{BASE_DEVICE_ID}DEFAULT",
+            "device_id": BASE_DEVICE_ID,  # Use the actual device ID
             "course_code": "NO_COURSE",
             "course_title": "No Active Course",
             "session": "",
@@ -105,7 +105,7 @@ def test_device_connected(mac_address, device_name="Test Device", course_info=No
     
     if course_info and course_info.get('active_course'):
         data = {
-            "device_id": course_info.get('device_id'),
+            "device_id": BASE_DEVICE_ID,  # Use the actual device ID
             "mac_address": mac_address,
             "device_name": device_name,
             "ip_address": f"192.168.4.{random.randint(100, 200)}",
@@ -116,7 +116,7 @@ def test_device_connected(mac_address, device_name="Test Device", course_info=No
         }
     else:
         data = {
-            "device_id": f"{BASE_DEVICE_ID}DEFAULT",
+            "device_id": BASE_DEVICE_ID,  # Use the actual device ID
             "mac_address": mac_address,
             "device_name": device_name,
             "ip_address": f"192.168.4.{random.randint(100, 200)}",
