@@ -107,7 +107,8 @@ def student_login_view(request):
         if user is not None and user.is_authenticated:
             # Check if user is a student (has student profile or is enrolled in courses)
             try:
-                student = Student.objects.get(user=user)
+                # Try to find a student with matching username (assuming username is matric number)
+                student = Student.objects.get(matric_no=username)
                 if CourseEnrollment.objects.filter(student=student).exists():
                     login(request, user)
                     messages.success(request, f"✅ Welcome, {student.name}!")
@@ -403,14 +404,12 @@ def dashboard(request):
 def student_dashboard(request):
     """Dashboard for students to view their courses and attendance"""
     try:
-        student = Student.objects.get(user=request.user)
+        # Try to find student by username (assuming username is matric number)
+        student = Student.objects.get(matric_no=request.user.username)
     except Student.DoesNotExist:
-        # If no student profile exists, create one
-        student = Student.objects.create(
-            user=request.user,
-            name=request.user.get_full_name() or request.user.username,
-            matric_no=request.user.username
-        )
+        # If no student profile exists, redirect to error page
+        messages.error(request, "❌ Student profile not found. Please contact administrator.")
+        return redirect('admin_ui:student_login')
     
     # Get enrolled courses
     enrolled_courses = CourseEnrollment.objects.filter(student=student)
@@ -1028,9 +1027,11 @@ def course_attendance(request, assigned_id):
                 time=parsed_time
             )
             
-            # Get all enrolled students
+            # Get all enrolled students for this specific session and semester
             enrolled_students = Student.objects.filter(
-                courseenrollment__course=assigned_course.course
+                courseenrollment__course=assigned_course.course,
+                courseenrollment__session=assigned_course.session,
+                courseenrollment__semester=assigned_course.semester
             )
             
             # Check network connectivity for each student
@@ -10422,7 +10423,7 @@ def student_attendance_marking_view(request):
     """Student view to mark attendance for active sessions"""
     try:
         # Get the student profile for the current user
-        student = Student.objects.get(user=request.user)
+        student = Student.objects.get(matric_no=request.user.username)
     except Student.DoesNotExist:
         messages.error(request, "Student profile not found. Please contact administrator.")
         return redirect('admin_ui:dashboard')
