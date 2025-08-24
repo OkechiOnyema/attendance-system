@@ -1,0 +1,253 @@
+{% extends 'admin_ui/base.html' %}
+{% load static %}
+
+{% block title %}Attendance Results - {{ attendance_session.course.code }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Session Header -->
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h4 class="mb-0">📊 Attendance Results</h4>
+                            <p class="mb-0 text-white-50">
+                                {{ attendance_session.course.code }} - {{ attendance_session.course.title }}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <span class="badge bg-light text-dark fs-6">
+                                {{ attendance_session.date|date:"M d, Y" }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>Course:</strong> {{ attendance_session.course.code }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Session:</strong> {{ attendance_session.session }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Semester:</strong> {{ attendance_session.semester }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Total Students:</strong> {{ total_students }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center">
+                            <h3 class="card-title">{{ present_count }}</h3>
+                            <p class="card-text">Students Present</p>
+                            <div class="progress bg-light" style="height: 8px;">
+                                <div class="progress-bar bg-success" 
+                                     style="width: {% widthratio present_count total_students 100 %}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body text-center">
+                            <h3 class="card-title">{{ absent_count }}</h3>
+                            <p class="card-text">Students Absent</p>
+                            <div class="progress bg-light" style="height: 8px;">
+                                <div class="progress-bar bg-danger" 
+                                     style="width: {% widthratio absent_count total_students 100 %}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-info text-white">
+                        <div class="card-body text-center">
+                            <h3 class="card-title">{% widthratio present_count total_students 100 %}%</h3>
+                            <p class="card-text">Attendance Rate</p>
+                            <div class="progress bg-light" style="height: 8px;">
+                                <div class="progress-bar bg-info" 
+                                     style="width: {% widthratio present_count total_students 100 %}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Records Table -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">📋 Detailed Attendance Records</h5>
+                    <div>
+                        <button class="btn btn-outline-primary btn-sm" onclick="exportToCSV()">
+                            📥 Export to CSV
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="printAttendance()">
+                            🖨️ Print
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if attendance_records %}
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="attendanceTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Student Name</th>
+                                        <th>Matric No</th>
+                                        <th>Department</th>
+                                        <th>Level</th>
+                                        <th>Status</th>
+                                        <th>Marked At</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for record in attendance_records %}
+                                    <tr>
+                                        <td>{{ forloop.counter }}</td>
+                                        <td>
+                                            <strong>{{ record.student.name }}</strong>
+                                        </td>
+                                        <td>
+                                            <code>{{ record.student.matric_no }}</code>
+                                        </td>
+                                        <td>{{ record.student.department|default:"-" }}</td>
+                                        <td>{{ record.student.level|default:"-" }}</td>
+                                        <td>
+                                            {% if record.status == 'present' %}
+                                                <span class="badge bg-success">✅ Present</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">❌ Absent</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {{ record.marked_at|date:"M d, Y H:i" }}
+                                            </small>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <div class="text-muted mb-3">
+                                <i class="fas fa-clipboard-list fa-3x"></i>
+                            </div>
+                            <h5>No Attendance Records</h5>
+                            <p>No attendance records found for this session.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{% url 'admin_ui:lecturer_attendance_dashboard' %}" 
+                           class="btn btn-outline-secondary me-md-2">
+                            ← Back to Dashboard
+                        </a>
+                        <a href="{% url 'admin_ui:mark_attendance' attendance_session.id %}" 
+                           class="btn btn-warning me-md-2">
+                            📝 Edit Attendance
+                        </a>
+                        <a href="{% url 'admin_ui:start_attendance_session_new' %}" 
+                           class="btn btn-primary">
+                            🚀 Start New Session
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Section -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">📈 Session Summary</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Attendance Statistics:</h6>
+                            <ul class="list-unstyled">
+                                <li><strong>Total Students:</strong> {{ total_students }}</li>
+                                <li><strong>Present:</strong> {{ present_count }} ({% widthratio present_count total_students 100 %}%)</li>
+                                <li><strong>Absent:</strong> {{ absent_count }} ({% widthratio absent_count total_students 100 %}%)</li>
+                                <li><strong>Attendance Rate:</strong> {% widthratio present_count total_students 100 %}%</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Session Details:</h6>
+                            <ul class="list-unstyled">
+                                <li><strong>Course:</strong> {{ attendance_session.course.code }} - {{ attendance_session.course.title }}</li>
+                                <li><strong>Date:</strong> {{ attendance_session.date|date:"F d, Y" }}</li>
+                                <li><strong>Academic Session:</strong> {{ attendance_session.session }}</li>
+                                <li><strong>Semester:</strong> {{ attendance_session.semester }}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function exportToCSV() {
+    const table = document.getElementById('attendanceTable');
+    const rows = table.querySelectorAll('tr');
+    let csv = [];
+    
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const cols = row.querySelectorAll('td, th');
+        let rowData = [];
+        
+        for (let j = 0; j < cols.length; j++) {
+            let text = cols[j].innerText.replace(/"/g, '""');
+            rowData.push('"' + text + '"');
+        }
+        
+        csv.push(rowData.join(','));
+    }
+    
+    const csvContent = csv.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'attendance_{{ attendance_session.course.code }}_{{ attendance_session.date|date:"Y-m-d" }}.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function printAttendance() {
+    window.print();
+}
+
+// Add print styles
+const style = document.createElement('style');
+style.textContent = `
+    @media print {
+        .btn, .card-header, .d-grid { display: none !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .container { max-width: 100% !important; }
+    }
+`;
+document.head.appendChild(style);
+</script>
+{% endblock %}

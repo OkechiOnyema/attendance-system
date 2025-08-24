@@ -10,6 +10,8 @@ from django.http import HttpResponseForbidden, JsonResponse
 from urllib.parse import unquote
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.db import models
+import json
 from .forms import (
     LecturerLoginForm,
     AdminCreationForm,
@@ -999,13 +1001,31 @@ def course_attendance(request, assigned_id):
     
     if request.method == 'POST':
         if 'take_attendance' in request.POST:
-            # Create attendance session
+            # Get time from form and parse it
+            time_from_form = request.POST.get('time', '09:00:00')
+            
+            # Parse the time string to a time object
+            try:
+                from datetime import datetime
+                if ':' in time_from_form:
+                    # Handle both "09:00" and "09:00:00" formats
+                    if time_from_form.count(':') == 1:
+                        time_from_form += ':00'
+                    parsed_time = datetime.strptime(time_from_form, '%H:%M:%S').time()
+                else:
+                    parsed_time = datetime.strptime(time_from_form, '%H:%M:%S').time()
+            except ValueError:
+                # Default to 09:00 if parsing fails
+                parsed_time = datetime.strptime('09:00:00', '%H:%M:%S').time()
+            
+            # Create attendance session with time
             attendance_session, created = AttendanceSession.objects.get_or_create(
                 course=assigned_course.course,
                 lecturer=request.user,
                 session=assigned_course.session,
                 semester=assigned_course.semester,
-                date=timezone.now().date()
+                date=timezone.now().date(),
+                time=parsed_time
             )
             
             # Get all enrolled students
@@ -1032,7 +1052,8 @@ def course_attendance(request, assigned_id):
                         defaults={
                             'status': status,
                             'network_verified': network_verified,
-                            'esp32_device': esp32_device
+                            'esp32_device': esp32_device,
+                            'marked_by': request.user
                         }
                     )
                     
@@ -1040,18 +1061,55 @@ def course_attendance(request, assigned_id):
                         attendance_record.status = status
                         attendance_record.network_verified = network_verified
                         attendance_record.esp32_device = esp32_device
+                        attendance_record.marked_by = request.user
                         attendance_record.save()
                 else:
                     # Mark as absent
                     attendance_record, created = AttendanceRecord.objects.get_or_create(
                         attendance_session=attendance_session,
                         student=student,
-                        defaults={'status': status}
+                        defaults={
+                            'status': status,
+                            'marked_by': request.user
+                        }
                     )
                     
                     if not created:
                         attendance_record.status = status
+                        attendance_record.marked_by = request.user
                         attendance_record.save()
+            
+            # Check if this is an AJAX request
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                # Return updated attendance data for real-time table update
+                today = timezone.now().date()
+                attendance_records = AttendanceRecord.objects.filter(
+                    attendance_session__course=assigned_course.course,
+                    attendance_session__session=assigned_course.session,
+                    attendance_session__semester=assigned_course.semester
+                ).select_related('student', 'attendance_session', 'marked_by', 'esp32_device').order_by('-attendance_session__date', '-attendance_session__time', 'student__name')
+                
+                # Prepare data for JSON response
+                records_data = []
+                for record in attendance_records:
+                    records_data.append({
+                        'date': record.attendance_session.date.strftime('%b %d, %Y'),
+                        'time': record.attendance_session.time.strftime('%I:%M %p'),
+                        'student_name': record.student.name,
+                        'matric_no': record.student.matric_no,
+                        'status': record.status,
+                        'network_verified': record.network_verified,
+                        'esp32_device': record.esp32_device.device_name if record.esp32_device else '-',
+                        'marked_by': record.marked_by.username if record.marked_by else 'System',
+                        'marked_at': record.marked_at.strftime('%I:%M %p') if record.marked_at else '-'
+                    })
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Attendance taken for {assigned_course.course.code}",
+                    'attendance_records': records_data,
+                    'total_records': len(records_data)
+                })
             
             messages.success(request, f"Attendance taken for {assigned_course.course.code}")
             return redirect('admin_ui:course_attendance', assigned_id=assigned_id)
@@ -1061,19 +1119,25 @@ def course_attendance(request, assigned_id):
     existing_attendance = {}
     
     try:
-        attendance_session = AttendanceSession.objects.get(
+        # Get the most recent attendance session for today (in case there are multiple)
+        attendance_session = AttendanceSession.objects.filter(
             course=assigned_course.course,
             date=today
-        )
-        for record in AttendanceRecord.objects.filter(attendance_session=attendance_session):
-            existing_attendance[record.student.matric_no] = record
-    except AttendanceSession.DoesNotExist:
+        ).order_by('-created_at').first()
+        
+        if attendance_session:
+            for record in AttendanceRecord.objects.filter(attendance_session=attendance_session):
+                existing_attendance[record.student.matric_no] = record
+    except Exception as e:
+        print(f"Error getting existing attendance: {e}")
         pass
     
-    # Get enrolled students
+    # Get enrolled students (use distinct to avoid duplicates)
     students = Student.objects.filter(
-        courseenrollment__course=assigned_course.course
-    ).order_by('name')
+        courseenrollment__course=assigned_course.course,
+        courseenrollment__session=assigned_course.session,
+        courseenrollment__semester=assigned_course.semester
+    ).distinct().order_by('name')
     
     # Check network connectivity status
     network_status = {}
@@ -1085,12 +1149,20 @@ def course_attendance(request, assigned_id):
         )
         network_status[student.matric_no] = network_verified
     
+    # Get all attendance records for this course (for the records table)
+    attendance_records = AttendanceRecord.objects.filter(
+        attendance_session__course=assigned_course.course,
+        attendance_session__session=assigned_course.session,
+        attendance_session__semester=assigned_course.semester
+    ).select_related('student', 'attendance_session', 'marked_by').order_by('-attendance_session__date', '-attendance_session__time', 'student__name')
+    
     return render(request, 'admin_ui/course_attendance.html', {
         'assigned_course': assigned_course,
         'students': students,
         'existing_attendance': existing_attendance,
         'network_status': network_status,
-        'today': today
+        'today': today,
+        'attendance_records': attendance_records
     })
 
 
@@ -10343,3 +10415,704 @@ def esp32_device_management(request):
     }
     
     return render(request, 'admin_ui/esp32_management.html', context)
+
+# 🎯 Student Attendance Marking System - ESP32 Integration
+@login_required
+def student_attendance_marking_view(request):
+    """Student view to mark attendance for active sessions"""
+    try:
+        # Get the student profile for the current user
+        student = Student.objects.get(user=request.user)
+    except Student.DoesNotExist:
+        messages.error(request, "Student profile not found. Please contact administrator.")
+        return redirect('admin_ui:dashboard')
+    
+    # Get all active network sessions where this student is enrolled
+    active_sessions = NetworkSession.objects.filter(
+        is_active=True,
+        course__courseenrollment__student=student
+    ).select_related('course', 'lecturer', 'esp32_device').distinct()
+    
+    # Get today's date
+    today = timezone.now().date()
+    
+    # Get existing attendance records for today
+    existing_attendance = {}
+    try:
+        attendance_sessions = AttendanceSession.objects.filter(
+            course__courseenrollment__student=student,
+            date=today
+        )
+        for session in attendance_sessions:
+            try:
+                record = AttendanceRecord.objects.get(
+                    attendance_session=session,
+                    student=student
+                )
+                existing_attendance[session.course.code] = record
+            except AttendanceRecord.DoesNotExist:
+                pass
+    except Exception as e:
+        print(f"Error getting existing attendance: {e}")
+    
+    # Check network connectivity status for each active session
+    network_status = {}
+    for session in active_sessions:
+        # Check if student's device was connected to ESP32 network
+        connected_device = ConnectedDevice.objects.filter(
+            network_session=session,
+            is_connected=True
+        ).first()
+        
+        network_status[session.id] = {
+            'connected': connected_device is not None,
+            'device_mac': connected_device.mac_address if connected_device else None,
+            'connected_at': connected_device.connected_at if connected_device else None
+        }
+    
+    if request.method == 'POST':
+        session_id = request.POST.get('session_id')
+        action = request.POST.get('action')
+        
+        if session_id and action:
+            try:
+                network_session = NetworkSession.objects.get(id=session_id)
+                
+                # Verify student is enrolled in this course
+                if not CourseEnrollment.objects.filter(
+                    student=student,
+                    course=network_session.course
+                ).exists():
+                    messages.error(request, "You are not enrolled in this course.")
+                    return redirect('admin_ui:student_attendance_marking')
+                
+                if action == 'mark_present':
+                    # 🚨 ENFORCE ESP32 CONNECTION - Block attendance without physical presence
+                    if not network_status[network_session.id]['connected']:
+                        messages.error(request, f"❌ CANNOT MARK ATTENDANCE: You must connect to ESP32 WiFi network '{network_session.esp32_device.wifi_ssid if network_session.esp32_device else 'Classroom_Attendance'}' to verify physical presence. Please connect to the classroom WiFi first, then try again.")
+                        return redirect('admin_ui:student_attendance_marking')
+                    
+                    # Check if attendance already exists for today
+                    attendance_session, created = AttendanceSession.objects.get_or_create(
+                        course=network_session.course,
+                        lecturer=network_session.lecturer,
+                        session=network_session.session,
+                        semester=network_session.semester,
+                        date=today
+                    )
+                    
+                    # Check if attendance record already exists
+                    attendance_record, record_created = AttendanceRecord.objects.get_or_create(
+                        attendance_session=attendance_session,
+                        student=student,
+                        defaults={
+                            'status': 'present',
+                            'network_verified': True,  # Always True since we enforced connection
+                            'device_mac': network_status[network_session.id]['device_mac'],
+                            'esp32_device': network_session.esp32_device
+                        }
+                    )
+                    
+                    if not record_created:
+                        # Update existing record
+                        attendance_record.status = 'present'
+                        attendance_record.network_verified = True  # Always True since we enforced connection
+                        attendance_record.device_mac = network_status[network_session.id]['device_mac']
+                        attendance_record.esp32_device = network_session.esp32_device
+                        attendance_record.save()
+                    
+                    messages.success(request, f"✅ Attendance marked as PRESENT for {network_session.course.code} - ESP32 Network Verified!")
+                    
+                elif action == 'mark_absent':
+                    # Mark as absent
+                    attendance_session, created = AttendanceSession.objects.get_or_create(
+                        course=network_session.course,
+                        lecturer=network_session.lecturer,
+                        session=network_session.session,
+                        semester=network_session.semester,
+                        date=today
+                    )
+                    
+                    attendance_record, record_created = AttendanceRecord.objects.get_or_create(
+                        attendance_session=attendance_session,
+                        student=student,
+                        defaults={
+                            'status': 'absent',
+                            'network_verified': False
+                        }
+                    )
+                    
+                    if not record_created:
+                        attendance_record.status = 'absent'
+                        attendance_record.network_verified = False
+                        attendance_record.save()
+                    
+                    messages.success(request, f"❌ Attendance marked as ABSENT for {network_session.course.code}")
+                
+                return redirect('admin_ui:student_attendance_marking')
+                
+            except NetworkSession.DoesNotExist:
+                messages.error(request, "Session not found.")
+            except Exception as e:
+                messages.error(request, f"Error marking attendance: {str(e)}")
+    
+    return render(request, 'admin_ui/student_attendance_marking.html', {
+        'student': student,
+        'active_sessions': active_sessions,
+        'existing_attendance': existing_attendance,
+        'network_status': network_status,
+        'today': today
+    })
+
+# 🔌 ESP32 Student Verification API
+@csrf_exempt
+def esp32_student_verification_api(request):
+    """API for ESP32 to verify student enrollment and mark attendance"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            matric_number = data.get('matric_number')
+            course_code = data.get('course_code')
+            device_mac = data.get('device_mac', 'ESP32_DIRECT')
+            esp32_device_id = data.get('esp32_device_id', 'ESP32_PRESENCE_001')
+            action = data.get('action', 'mark_present')
+            session = data.get('session', '2024/2025')
+            semester = data.get('semester', '1st Semester')
+            
+            if not all([matric_number, course_code]):
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Missing required fields: matric_number, course_code'
+                }, status=400)
+            
+            # Find the student
+            try:
+                student = Student.objects.get(matric_no=matric_number)
+            except Student.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Student with matric number {matric_number} not found'
+                }, status=404)
+            
+            # Find the course
+            try:
+                course = Course.objects.get(code=course_code)
+            except Course.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Course {course_code} not found'
+                }, status=404)
+            
+            # Check if student is enrolled in this course
+            try:
+                # Try to find enrollment with specific session and semester
+                enrollment = CourseEnrollment.objects.filter(
+                    student=student,
+                    course=course,
+                    session=session,
+                    semester=semester
+                ).first()
+                
+                if not enrollment:
+                    # Try to find any enrollment for this course
+                    enrollment = CourseEnrollment.objects.filter(
+                        student=student,
+                        course=course
+                    ).first()
+                
+                if not enrollment:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'Student {matric_number} is not enrolled in course {course_code}'
+                    }, status=403)
+                    
+            except Exception as e:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Error checking enrollment: {str(e)}'
+                }, status=500)
+            
+            # Get or create ESP32 device
+            esp32_device, created = ESP32Device.objects.get_or_create(
+                device_id=esp32_device_id,
+                defaults={
+                    'device_name': f'ESP32_{esp32_device_id}',
+                    'ssid': 'Classroom_Attendance',
+                    'password': '',
+                    'location': 'Classroom',
+                    'is_active': True
+                }
+            )
+            
+            # Create or get active network session for today
+            today = timezone.now().date()
+            network_session, created = NetworkSession.objects.get_or_create(
+                esp32_device=esp32_device,
+                course=course,
+                date=today,
+                is_active=True,
+                defaults={
+                    'lecturer': User.objects.filter(is_staff=True).first() or User.objects.first(),
+                    'session': enrollment.session,
+                    'semester': enrollment.semester,
+                    'start_time': timezone.now(),
+                    'is_active': True
+                }
+            )
+            
+            # Create or get attendance session
+            attendance_session, created = AttendanceSession.objects.get_or_create(
+                course=course,
+                lecturer=network_session.lecturer,
+                session=enrollment.session,
+                semester=enrollment.semester,
+                date=today,
+                defaults={}
+            )
+            
+            # Check if attendance already exists
+            attendance_record, record_created = AttendanceRecord.objects.get_or_create(
+                attendance_session=attendance_session,
+                student=student,
+                defaults={
+                    'status': 'present',
+                    'network_verified': True,
+                    'device_mac': device_mac,
+                    'esp32_device': esp32_device
+                }
+            )
+            
+            if not record_created:
+                # Update existing record
+                attendance_record.status = 'present'
+                attendance_record.network_verified = True
+                attendance_record.device_mac = device_mac
+                attendance_record.esp32_device = esp32_device
+                attendance_record.save()
+            
+            # Update ESP32 device last seen
+            esp32_device.last_seen = timezone.now()
+            esp32_device.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Attendance recorded for {student.name} in {course.code}',
+                'student_name': student.name,
+                'course_code': course.code,
+                'status': 'present',
+                'network_verified': True,
+                'device_mac': device_mac,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'message': 'Invalid JSON data'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': f'Error recording attendance: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'message': 'Method not allowed'
+    }, status=405)
+
+
+
+@login_required
+def start_attendance_session(request):
+    """Allow lecturers to start an attendance session with ESP32"""
+    if request.method == 'POST':
+        course_id = request.POST.get('course_id')
+        session = request.POST.get('session', '2024/2025')
+        semester = request.POST.get('semester', '1st Semester')
+        
+        try:
+            course = Course.objects.get(id=course_id)
+            
+            # Check if lecturer is assigned to this course
+            if not AssignedCourse.objects.filter(lecturer=request.user, course=course).exists():
+                messages.error(request, "❌ You are not assigned to this course.")
+                return redirect('admin_ui:dashboard')
+            
+            # Create or get attendance session
+            attendance_session, created = AttendanceSession.objects.get_or_create(
+                course=course,
+                lecturer=request.user,
+                session=session,
+                semester=semester,
+                date=timezone.now().date(),
+                defaults={}
+            )
+            
+            # Create network session for ESP32
+            esp32_device = ESP32Device.objects.filter(is_active=True).first()
+            if esp32_device:
+                network_session, created = NetworkSession.objects.get_or_create(
+                    esp32_device=esp32_device,
+                    course=course,
+                    lecturer=request.user,
+                    session=session,
+                    semester=semester,
+                    date=timezone.now().date(),
+                    start_time=timezone.now(),
+                    is_active=True
+                )
+                
+                messages.success(request, f"✅ Attendance session started for {course.code}!")
+                messages.info(request, f"📱 Students can now connect to ESP32 WiFi: {esp32_device.ssid}")
+                messages.info(request, f"🌐 ESP32 will automatically serve attendance page")
+                
+            else:
+                messages.warning(request, "⚠️ No active ESP32 device found. Attendance session created but ESP32 integration disabled.")
+            
+            return redirect('admin_ui:dashboard')
+            
+        except Course.DoesNotExist:
+            messages.error(request, "❌ Course not found.")
+        except Exception as e:
+            messages.error(request, f"❌ Error starting session: {str(e)}")
+    
+    # Get courses assigned to this lecturer
+    assigned_courses = Course.objects.filter(
+        assignedcourse__lecturer=request.user
+    ).distinct()
+    
+    context = {
+        'assigned_courses': assigned_courses,
+        'current_session': '2024/2025',
+        'current_semester': '1st Semester'
+    }
+    
+    return render(request, 'admin_ui/start_attendance_session.html', context)
+
+# ============================================================================
+# LECTURER ATTENDANCE MANAGEMENT SYSTEM
+# ============================================================================
+
+@login_required
+def lecturer_attendance_dashboard(request):
+    """Dashboard for lecturers to manage attendance"""
+    # Get courses assigned to this lecturer with enrollment counts
+    assigned_courses = AssignedCourse.objects.filter(
+        lecturer=request.user
+    ).select_related('course').annotate(
+        enrolled_count=models.Count('course__courseenrollment', filter=models.Q(
+            courseenrollment__session=models.F('session'),
+            courseenrollment__semester=models.F('semester')
+        ))
+    ).order_by('session', 'semester', 'course__code')
+    
+    # Get today's attendance sessions
+    today = timezone.now().date()
+    today_sessions = AttendanceSession.objects.filter(
+        lecturer=request.user,
+        date=today
+    ).select_related('course')
+    
+    # Get active sessions (sessions from today that haven't been completed)
+    active_sessions = AttendanceSession.objects.filter(
+        lecturer=request.user,
+        date=today
+    ).select_related('course')
+    
+    # Get recent sessions (last 5 sessions)
+    recent_sessions = AttendanceSession.objects.filter(
+        lecturer=request.user
+    ).select_related('course').order_by('-date', '-id')[:5]
+    
+    # Add attendance statistics to recent sessions
+    for session in recent_sessions:
+        attendance_records = AttendanceRecord.objects.filter(attendance_session=session)
+        session.total_count = attendance_records.count()
+        session.present_count = attendance_records.filter(status='present').count()
+        session.absent_count = attendance_records.filter(status='absent').count()
+        session.is_active = session.date == today
+    
+    context = {
+        'assigned_courses': assigned_courses,
+        'today_sessions': today_sessions,
+        'active_sessions': active_sessions,
+        'recent_sessions': recent_sessions,
+        'today': today
+    }
+    
+    return render(request, 'admin_ui/lecturer_attendance_dashboard.html', context)
+
+@login_required
+def start_attendance_session_view(request):
+    """View to start a new attendance session"""
+    if request.method == 'POST':
+        course_id = request.POST.get('course')
+        session = request.POST.get('session')
+        semester = request.POST.get('semester')
+        date = request.POST.get('date')
+        time = request.POST.get('time')
+        session_type = request.POST.get('session_type', 'manual')
+        
+        if not all([course_id, session, semester, date, time]):
+            messages.error(request, "❌ Please fill in all required fields.")
+            return redirect('admin_ui:start_attendance_session_new')
+        
+        try:
+            course = Course.objects.get(id=course_id)
+            
+            # Check if lecturer is assigned to this course
+            if not AssignedCourse.objects.filter(lecturer=request.user, course=course).exists():
+                messages.error(request, "❌ You are not assigned to this course.")
+                return redirect('admin_ui:lecturer_attendance_dashboard')
+            
+            # Check if session already exists for this course, date, and time
+            existing_session = AttendanceSession.objects.filter(
+                course=course,
+                lecturer=request.user,
+                date=date,
+                time=time
+            ).first()
+            
+            if existing_session:
+                messages.info(request, f"ℹ️ Attendance session already exists for {course.code} on {date} at {time}.")
+                return redirect('admin_ui:mark_attendance', session_id=existing_session.id)
+            
+            # Create attendance session
+            attendance_session = AttendanceSession.objects.create(
+                course=course,
+                lecturer=request.user,
+                session=session,
+                semester=semester,
+                date=date,
+                time=time
+            )
+            
+            messages.success(request, f"✅ Attendance session started for {course.code} on {date} at {time}!")
+            return redirect('admin_ui:mark_attendance', session_id=attendance_session.id)
+            
+        except Course.DoesNotExist:
+            messages.error(request, "❌ Course not found.")
+        except Exception as e:
+            messages.error(request, f"❌ Error starting session: {str(e)}")
+    
+    # Get courses assigned to this lecturer with session and semester info
+    assigned_courses = AssignedCourse.objects.filter(
+        lecturer=request.user
+    ).select_related('course').order_by('course__code')
+    
+    context = {
+        'assigned_courses': assigned_courses,
+        'today_date': timezone.now().date()
+    }
+    
+    return render(request, 'admin_ui/start_attendance_session.html', context)
+
+@login_required
+def mark_attendance_view(request, session_id):
+    """View for lecturers to mark student attendance"""
+    try:
+        attendance_session = AttendanceSession.objects.get(
+            id=session_id,
+            lecturer=request.user
+        )
+    except AttendanceSession.DoesNotExist:
+        messages.error(request, "❌ Attendance session not found.")
+        return redirect('admin_ui:lecturer_attendance_dashboard')
+    
+    if request.method == 'POST':
+        # Handle attendance marking
+        for key, value in request.POST.items():
+            if key.startswith('student_'):
+                student_matric_no = key.replace('student_', '')
+                status = value
+                
+                try:
+                    student = Student.objects.get(matric_no=student_matric_no)
+                    
+                    # Check if student is enrolled in this course
+                    enrollment = CourseEnrollment.objects.filter(
+                        student=student,
+                        course=attendance_session.course,
+                        session=attendance_session.session,
+                        semester=attendance_session.semester
+                    ).first()
+                    
+                    if enrollment:
+                        # Create or update attendance record
+                        attendance_record, created = AttendanceRecord.objects.get_or_create(
+                            attendance_session=attendance_session,
+                            student=student,
+                            defaults={
+                                'status': status,
+                                'network_verified': False,
+                                'marked_by': request.user
+                            }
+                        )
+                        
+                        if not created:
+                            attendance_record.status = status
+                            attendance_record.marked_by = request.user
+                            attendance_record.save()
+                    
+                except Student.DoesNotExist:
+                    continue
+        
+        messages.success(request, "✅ Attendance marked successfully!")
+        return redirect('admin_ui:view_attendance_session', session_id=session_id)
+    
+    # Get enrolled students for this course
+    enrolled_students = CourseEnrollment.objects.filter(
+        course=attendance_session.course,
+        session=attendance_session.session,
+        semester=attendance_session.semester
+    ).select_related('student').order_by('student__name')
+    
+    # Get existing attendance records
+    existing_records = AttendanceRecord.objects.filter(
+        attendance_session=attendance_session
+    ).select_related('student')
+    
+    # Create a dictionary of existing records for easy lookup
+    attendance_dict = {record.student.matric_no: record.status for record in existing_records}
+    
+    context = {
+        'attendance_session': attendance_session,
+        'enrolled_students': enrolled_students,
+        'attendance_dict': attendance_dict
+    }
+    
+    return render(request, 'admin_ui/mark_attendance.html', context)
+
+@login_required
+def view_attendance_session_view(request, session_id):
+    """View to see attendance results for a session"""
+    try:
+        attendance_session = AttendanceSession.objects.get(
+            id=session_id,
+            lecturer=request.user
+        )
+    except AttendanceSession.DoesNotExist:
+        messages.error(request, "❌ Attendance session not found.")
+        return redirect('admin_ui:lecturer_dashboard')
+    
+    # Get attendance records
+    attendance_records = AttendanceRecord.objects.filter(
+        attendance_session=attendance_session
+    ).select_related('student').order_by('student__name')
+    
+    # Calculate statistics
+    total_students = attendance_records.count()
+    present_count = attendance_records.filter(status='present').count()
+    absent_count = attendance_records.filter(status='absent').count()
+    
+    context = {
+        'attendance_session': attendance_session,
+        'attendance_records': attendance_records,
+        'total_students': total_students,
+        'present_count': present_count,
+        'absent_count': absent_count
+    }
+    
+    return render(request, 'admin_ui/view_attendance_session.html', context)
+
+@login_required
+def lecturer_attendance_history_view(request):
+    """View to see all attendance sessions by this lecturer"""
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+    
+    # Get filter parameters
+    selected_course = request.GET.get('course')
+    selected_session = request.GET.get('session')
+    selected_semester = request.GET.get('semester')
+    selected_date_range = request.GET.get('date_range')
+    
+    # Base query
+    attendance_sessions = AttendanceSession.objects.filter(
+        lecturer=request.user
+    ).select_related('course')
+    
+    # Apply filters
+    if selected_course:
+        attendance_sessions = attendance_sessions.filter(course_id=selected_course)
+    
+    if selected_session:
+        attendance_sessions = attendance_sessions.filter(session=selected_session)
+    
+    if selected_semester:
+        attendance_sessions = attendance_sessions.filter(semester=selected_semester)
+    
+    if selected_date_range:
+        today = timezone.now().date()
+        if selected_date_range == 'today':
+            attendance_sessions = attendance_sessions.filter(date=today)
+        elif selected_date_range == 'week':
+            week_ago = today - timedelta(days=7)
+            attendance_sessions = attendance_sessions.filter(date__gte=week_ago)
+        elif selected_date_range == 'month':
+            month_ago = today - timedelta(days=30)
+            attendance_sessions = attendance_sessions.filter(date__gte=month_ago)
+        elif selected_date_range == 'semester':
+            # Assuming semester is roughly 4 months
+            semester_ago = today - timedelta(days=120)
+            attendance_sessions = attendance_sessions.filter(date__gte=semester_ago)
+    
+    # Order by date (newest first)
+    attendance_sessions = attendance_sessions.order_by('-date', '-id')
+    
+    # Add attendance statistics to each session
+    for session in attendance_sessions:
+        attendance_records = AttendanceRecord.objects.filter(attendance_session=session)
+        session.total_students = attendance_records.count()
+        session.present_count = attendance_records.filter(status='present').count()
+        session.absent_count = attendance_records.filter(status='absent').count()
+        session.attendance_rate = (session.present_count / session.total_students * 100) if session.total_students > 0 else 0
+    
+    # Pagination
+    paginator = Paginator(attendance_sessions, 20)  # 20 sessions per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Get available filter options
+    available_courses = Course.objects.filter(
+        assignedcourse__lecturer=request.user
+    ).distinct().order_by('code')
+    
+    available_sessions = AttendanceSession.objects.filter(
+        lecturer=request.user
+    ).values_list('session', flat=True).distinct().order_by('-session')
+    
+    available_semesters = AttendanceSession.objects.filter(
+        lecturer=request.user
+    ).values_list('semester', flat=True).distinct().order_by('semester')
+    
+    # Calculate overall statistics
+    all_records = AttendanceRecord.objects.filter(
+        attendance_session__lecturer=request.user
+    )
+    
+    total_sessions = attendance_sessions.count()
+    total_students_present = all_records.filter(status='present').count()
+    total_students_absent = all_records.filter(status='absent').count()
+    overall_attendance_rate = (total_students_present / (total_students_present + total_students_absent) * 100) if (total_students_present + total_students_absent) > 0 else 0
+    
+    context = {
+        'attendance_sessions': page_obj,
+        'page_obj': page_obj,
+        'is_paginated': page_obj.has_other_pages(),
+        'available_courses': available_courses,
+        'available_sessions': available_sessions,
+        'available_semesters': available_semesters,
+        'selected_course': selected_course,
+        'selected_session': selected_session,
+        'selected_semester': selected_semester,
+        'selected_date_range': selected_date_range,
+        'total_sessions': total_sessions,
+        'total_students_present': total_students_present,
+        'total_students_absent': total_students_absent,
+        'overall_attendance_rate': overall_attendance_rate,
+        'today_date': timezone.now().date()
+    }
+    
+    return render(request, 'admin_ui/lecturer_attendance_history.html', context)

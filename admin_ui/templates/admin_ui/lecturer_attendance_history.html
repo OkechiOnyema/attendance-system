@@ -1,0 +1,294 @@
+{% extends 'admin_ui/base.html' %}
+{% load static %}
+
+{% block title %}Attendance History{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>📊 Attendance History</h2>
+                <a href="{% url 'admin_ui:lecturer_attendance_dashboard' %}" class="btn btn-outline-secondary">
+                    ← Back to Dashboard
+                </a>
+            </div>
+
+            <!-- Filter Options -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">🔍 Filter Options</h6>
+                </div>
+                <div class="card-body">
+                    <form method="get" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="course" class="form-label">Course</label>
+                            <select class="form-select" id="course" name="course">
+                                <option value="">All Courses</option>
+                                {% for course in available_courses %}
+                                    <option value="{{ course.id }}" {% if selected_course == course.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ course.code }} - {{ course.title }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="session" class="form-label">Academic Session</label>
+                            <select class="form-select" id="session" name="session">
+                                <option value="">All Sessions</option>
+                                {% for session in available_sessions %}
+                                    <option value="{{ session }}" {% if selected_session == session %}selected{% endif %}>
+                                        {{ session }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="semester" class="form-label">Semester</label>
+                            <select class="form-select" id="semester" name="semester">
+                                <option value="">All Semesters</option>
+                                {% for semester in available_semesters %}
+                                    <option value="{{ semester }}" {% if selected_semester == semester %}selected{% endif %}>
+                                        {{ semester }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="date_range" class="form-label">Date Range</label>
+                            <select class="form-select" id="date_range" name="date_range">
+                                <option value="">All Time</option>
+                                <option value="today" {% if selected_date_range == 'today' %}selected{% endif %}>Today</option>
+                                <option value="week" {% if selected_date_range == 'week' %}selected{% endif %}>This Week</option>
+                                <option value="month" {% if selected_date_range == 'month' %}selected{% endif %}>This Month</option>
+                                <option value="semester" {% if selected_date_range == 'semester' %}selected{% endif %}>This Semester</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">🔍 Apply Filters</button>
+                            <a href="{% url 'admin_ui:lecturer_attendance_history' %}" class="btn btn-outline-secondary ms-2">
+                                🗑️ Clear Filters
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Statistics Summary -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body text-center">
+                            <h4 class="card-title">{{ total_sessions }}</h4>
+                            <p class="card-text">Total Sessions</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center">
+                            <h4 class="card-title">{{ total_students_present }}</h4>
+                            <p class="card-text">Total Present</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body text-center">
+                            <h4 class="card-title">{{ total_students_absent }}</h4>
+                            <p class="card-text">Total Absent</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body text-center">
+                            <h4 class="card-title">{{ overall_attendance_rate|floatformat:1 }}%</h4>
+                            <p class="card-text">Overall Rate</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Sessions Table -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">📅 Attendance Sessions</h5>
+                    <div>
+                        <button class="btn btn-outline-primary btn-sm" onclick="exportHistoryToCSV()">
+                            📥 Export to CSV
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if attendance_sessions %}
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="historyTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Date</th>
+                                        <th>Course</th>
+                                        <th>Session</th>
+                                        <th>Semester</th>
+                                        <th>Students</th>
+                                        <th>Present</th>
+                                        <th>Absent</th>
+                                        <th>Rate</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in attendance_sessions %}
+                                    <tr>
+                                        <td>{{ forloop.counter }}</td>
+                                        <td>
+                                            <strong>{{ session.date|date:"M d, Y" }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ session.date|date:"D" }}</small>
+                                        </td>
+                                        <td>
+                                            <strong>{{ session.course.code }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ session.course.title }}</small>
+                                        </td>
+                                        <td>{{ session.session }}</td>
+                                        <td>{{ session.semester }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                {{ session.total_students }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-success">
+                                                {{ session.present_count }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-danger">
+                                                {{ session.absent_count }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="progress" style="height: 20px;">
+                                                <div class="progress-bar bg-success" 
+                                                     style="width: {{ session.attendance_rate }}%">
+                                                    {{ session.attendance_rate }}%
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group-vertical btn-group-sm">
+                                                <a href="{% url 'admin_ui:view_attendance_session' session.id %}" 
+                                                   class="btn btn-outline-primary btn-sm">
+                                                    👁️ View
+                                                </a>
+                                                <a href="{% url 'admin_ui:mark_attendance' session.id %}" 
+                                                   class="btn btn-outline-warning btn-sm">
+                                                    📝 Edit
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        {% if is_paginated %}
+                        <nav aria-label="Attendance history pagination" class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                {% if page_obj.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page=1{% if selected_course %}&course={{ selected_course }}{% endif %}{% if selected_session %}&session={{ selected_session }}{% endif %}{% if selected_semester %}&semester={{ selected_semester }}{% endif %}{% if selected_date_range %}&date_range={{ selected_date_range }}{% endif %}">
+                                            « First
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_course %}&course={{ selected_course }}{% endif %}{% if selected_session %}&session={{ selected_session }}{% endif %}{% if selected_semester %}&semester={{ selected_semester }}{% endif %}{% if selected_date_range %}&date_range={{ selected_date_range }}{% endif %}">
+                                            Previous
+                                        </a>
+                                    </li>
+                                {% endif %}
+
+                                <li class="page-item active">
+                                    <span class="page-link">
+                                        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                                    </span>
+                                </li>
+
+                                {% if page_obj.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_course %}&course={{ selected_course }}{% endif %}{% if selected_session %}&session={{ selected_session }}{% endif %}{% if selected_semester %}&semester={{ selected_semester }}{% endif %}{% if selected_date_range %}&date_range={{ selected_date_range }}{% endif %}">
+                                            Next
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if selected_course %}&course={{ selected_course }}{% endif %}{% if selected_session %}&session={{ selected_session }}{% endif %}{% if selected_semester %}&semester={{ selected_semester }}{% endif %}{% if selected_date_range %}&date_range={{ selected_date_range }}{% endif %}">
+                                            Last »
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+
+                    {% else %}
+                        <div class="text-center py-5">
+                            <div class="text-muted mb-3">
+                                <i class="fas fa-history fa-3x"></i>
+                            </div>
+                            <h5>No Attendance Sessions Found</h5>
+                            <p>No attendance sessions match your current filters.</p>
+                            <a href="{% url 'admin_ui:start_attendance_session_new' %}" class="btn btn-primary">
+                                🚀 Start Your First Session
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function exportHistoryToCSV() {
+    const table = document.getElementById('historyTable');
+    const rows = table.querySelectorAll('tr');
+    let csv = [];
+    
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const cols = row.querySelectorAll('td, th');
+        let rowData = [];
+        
+        for (let j = 0; j < cols.length; j++) {
+            let text = cols[j].innerText.replace(/"/g, '""');
+            rowData.push('"' + text + '"');
+        }
+        
+        csv.push(rowData.join(','));
+    }
+    
+    const csvContent = csv.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'attendance_history_{{ user.username }}_{{ today_date|date:"Y-m-d" }}.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Auto-submit form when filters change
+document.querySelectorAll('select[name="course"], select[name="session"], select[name="semester"], select[name="date_range"]').forEach(select => {
+    select.addEventListener('change', function() {
+        this.form.submit();
+    });
+});
+</script>
+{% endblock %}

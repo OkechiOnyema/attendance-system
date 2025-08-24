@@ -93,9 +93,11 @@ class AttendanceSession(models.Model):
     session = models.CharField(max_length=9)
     semester = models.CharField(max_length=20)
     date = models.DateField()
+    time = models.TimeField(default='09:00:00', help_text="Time for this attendance session")
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.course.code} - {self.date}"
+        return f"{self.course.code} - {self.date} at {self.time}"
 
 # ✅ Attendance Record
 class AttendanceRecord(models.Model):
@@ -106,6 +108,7 @@ class AttendanceRecord(models.Model):
         ('absent', 'Absent'),
     ])
     marked_at = models.DateTimeField(auto_now_add=True)
+    marked_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, help_text="Lecturer who marked this attendance")
     # New fields for network-based attendance
     network_verified = models.BooleanField(default=False, help_text="Whether student was connected to ESP32 network")
     device_mac = models.CharField(max_length=17, blank=True, null=True, help_text="Student device MAC address")

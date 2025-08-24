@@ -91,6 +91,18 @@ create_admin_view,
     esp32_start_session_view,
     esp32_session_active_view,
     esp32_end_session_view,
+    
+    # 🎯 Student Attendance Marking System
+    student_attendance_marking_view,
+    esp32_student_verification_api,
+    
+    # 🎯 Lecturer Attendance Session Management
+    start_attendance_session,
+    lecturer_attendance_dashboard,
+    start_attendance_session_view,
+    mark_attendance_view,
+    view_attendance_session_view,
+    lecturer_attendance_history_view,
 )
 
 app_name = 'admin_ui'
@@ -109,7 +121,7 @@ urlpatterns = [
 
     # 📚 Course Management (New)
     path('course/<int:course_id>/manage/', course_management, name='course_management'),
-    path('course/<int:course_id>/remove-student/<str:matric_no>/', remove_student_enrollment, name='remove_student_enrollment'),
+    re_path(r'^course/(?P<course_id>[0-9]+)/remove-student/(?P<matric_no>.+)/$', remove_student_enrollment, name='remove_student_enrollment'),
     path('course/<int:course_id>/download-template/', download_enrollment_template, name='download_enrollment_template'),
     
     # 🎯 Enhanced Dashboard
@@ -191,4 +203,18 @@ urlpatterns = [
     path('esp32-start-session/', esp32_start_session_view, name='esp32_start_session'),
     path('esp32-session-active/<int:session_id>/', esp32_session_active_view, name='esp32_session_active'),
     path('esp32-end-session/<int:session_id>/', esp32_end_session_view, name='esp32_end_session'),
+    
+    # 🎯 Student Attendance Marking System
+    path('student-attendance-marking/', student_attendance_marking_view, name='student_attendance_marking'),
+    path('api/esp32/student-verification/', esp32_student_verification_api, name='esp32_student_verification_api'),
+    
+    # 🎯 Lecturer Attendance Session Management
+    path('start-attendance-session/', start_attendance_session, name='start_attendance_session'),
+    
+    # 🎯 NEW: Lecturer Manual Attendance Management System
+    path('lecturer-attendance/', lecturer_attendance_dashboard, name='lecturer_attendance_dashboard'),
+    path('start-attendance-session-new/', start_attendance_session_view, name='start_attendance_session_new'),
+    path('mark-attendance/<int:session_id>/', mark_attendance_view, name='mark_attendance'),
+    path('view-attendance-session/<int:session_id>/', view_attendance_session_view, name='view_attendance_session'),
+    path('lecturer-attendance-history/', lecturer_attendance_history_view, name='lecturer_attendance_history'),
 ]

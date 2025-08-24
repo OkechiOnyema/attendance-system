@@ -1,0 +1,229 @@
+{% extends 'admin_ui/base.html' %}
+{% load static %}
+
+{% block title %}Mark Attendance - {{ attendance_session.course.code }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Session Header -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h4 class="mb-0">📝 Mark Attendance</h4>
+                            <p class="mb-0 text-white-50">
+                                {{ attendance_session.course.code }} - {{ attendance_session.course.title }}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <span class="badge bg-light text-dark fs-6">
+                                {{ attendance_session.date|date:"M d, Y" }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>Course:</strong> {{ attendance_session.course.code }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Session:</strong> {{ attendance_session.session }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Semester:</strong> {{ attendance_session.semester }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Students:</strong> {{ enrolled_students.count }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <!-- Attendance Form -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">👥 Student Attendance</h5>
+                    <p class="text-muted mb-0">Mark each student as present or absent</p>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="attendanceForm">
+                        {% csrf_token %}
+                        
+                        <!-- Quick Actions -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <button type="button" class="btn btn-success btn-sm" onclick="markAllPresent()">
+                                    ✅ Mark All Present
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="markAllAbsent()">
+                                    ❌ Mark All Absent
+                                </button>
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                <span class="badge bg-info" id="attendanceCount">
+                                    Present: 0 | Absent: 0 | Total: {{ enrolled_students.count }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Students List -->
+                        {% if enrolled_students %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 50px;">#</th>
+                                            <th>Student Name</th>
+                                            <th>Matric No</th>
+                                            <th>Department</th>
+                                            <th>Level</th>
+                                            <th style="width: 200px;">Attendance Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for enrollment in enrolled_students %}
+                                        <tr>
+                                            <td>{{ forloop.counter }}</td>
+                                            <td>
+                                                <strong>{{ enrollment.student.name }}</strong>
+                                            </td>
+                                            <td>
+                                                <code>{{ enrollment.student.matric_no }}</code>
+                                            </td>
+                                            <td>{{ enrollment.student.department|default:"-" }}</td>
+                                            <td>{{ enrollment.student.level|default:"-" }}</td>
+                                            <td>
+                                                <div class="btn-group w-100" role="group">
+                                                    <input type="radio" 
+                                                           class="btn-check" 
+                                                           name="student_{{ enrollment.student.matric_no }}" 
+                                                           id="present_{{ enrollment.student.matric_no }}" 
+                                                           value="present"
+                                                           {% if attendance_dict|get_item:enrollment.student.matric_no == 'present' %}checked{% endif %}
+                                                           onchange="updateAttendanceCount()">
+                                                    <label class="btn btn-outline-success" for="present_{{ enrollment.student.matric_no }}">
+                                                        ✅ Present
+                                                    </label>
+                                                    
+                                                    <input type="radio" 
+                                                           class="btn-check" 
+                                                           name="student_{{ enrollment.student.matric_no }}" 
+                                                           id="absent_{{ enrollment.student.matric_no }}" 
+                                                           value="absent"
+                                                           {% if attendance_dict|get_item:enrollment.student.matric_no == 'absent' %}checked{% endif %}
+                                                           onchange="updateAttendanceCount()">
+                                                    <label class="btn btn-outline-danger" for="absent_{{ enrollment.student.matric_no }}">
+                                                        ❌ Absent
+                                                    </label>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Form Actions -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                                <a href="{% url 'admin_ui:lecturer_attendance_dashboard' %}" 
+                                   class="btn btn-outline-secondary me-md-2">
+                                    ← Back to Dashboard
+                                </a>
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    💾 Save Attendance Records
+                                </button>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-5">
+                                <div class="text-muted mb-3">
+                                    <i class="fas fa-users fa-3x"></i>
+                                </div>
+                                <h5>No Students Enrolled</h5>
+                                <p>There are no students enrolled in this course for the selected session and semester.</p>
+                                <a href="{% url 'admin_ui:course_management' attendance_session.course.id %}" 
+                                   class="btn btn-primary">
+                                    👥 Manage Course Students
+                                </a>
+                            </div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">💡 Attendance Marking Tips</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>Use the quick action buttons to mark all students at once</li>
+                        <li>Individual student attendance can be changed by clicking the radio buttons</li>
+                        <li>Make sure to save your changes before leaving the page</li>
+                        <li>You can view the attendance results after saving</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    updateAttendanceCount();
+});
+
+function markAllPresent() {
+    document.querySelectorAll('input[value="present"]').forEach(radio => {
+        radio.checked = true;
+    });
+    updateAttendanceCount();
+}
+
+function markAllAbsent() {
+    document.querySelectorAll('input[value="absent"]').forEach(radio => {
+        radio.checked = true;
+    });
+    updateAttendanceCount();
+}
+
+function updateAttendanceCount() {
+    const presentCount = document.querySelectorAll('input[value="present"]:checked').length;
+    const absentCount = document.querySelectorAll('input[value="absent"]:checked').length;
+    const totalCount = {{ enrolled_students.count }};
+    
+    document.getElementById('attendanceCount').innerHTML = 
+        `Present: ${presentCount} | Absent: ${absentCount} | Total: ${totalCount}`;
+}
+
+// Form validation
+document.getElementById('attendanceForm').addEventListener('submit', function(e) {
+    const presentCount = document.querySelectorAll('input[value="present"]:checked').length;
+    const absentCount = document.querySelectorAll('input[value="absent"]:checked').length;
+    const totalCount = {{ enrolled_students.count }};
+    
+    if (presentCount + absentCount !== totalCount) {
+        e.preventDefault();
+        alert('Please mark attendance for all students before saving.');
+        return false;
+    }
+    
+    // Show loading state
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    submitBtn.disabled = true;
+});
+</script>
+{% endblock %}
